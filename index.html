@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLDC Motor 6-Step Commutation Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CSS Variables & Reset
+   ============================================================ */
+:root {
+  --bg:      #0a0f1e;
+  --bg2:     #111827;
+  --bg3:     #1e2a3a;
+  --border:  rgba(255,255,255,0.08);
+  --text:    #e2e8f0;
+  --text2:   #94a3b8;
+  --text3:   #475569;
+  --c-u:     #f97316;
+  --c-v:     #38bdf8;
+  --c-w:     #4ade80;
+  --c-main:  #fbbf24;
+  --c-bd:    #a78bfa;
+  --c-acc:   #fbbf24;
+  --radius:  8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+button { cursor: pointer; font-family: inherit; border: none; outline: none; transition: all .15s; }
+canvas { display: block; }
+input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+
+/* ============================================================
+   Layout
+   ============================================================ */
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* Header */
+#header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0f1829 0%, var(--bg) 100%);
+  display: flex; align-items: center; gap: 12px;
+}
+#header h1 {
+  font-size: 16px; font-weight: 700; letter-spacing: .02em;
+  background: linear-gradient(90deg, #fbbf24, #f97316, #38bdf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+#header .subtitle { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* Control Panel */
+#controls {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ctrl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ctrl-label { font-size: 10px; color: var(--text3); min-width: 72px; letter-spacing: .05em; text-transform: uppercase; }
+
+/* Step buttons */
+.step-btn {
+  padding: 5px 10px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(255,255,255,0.04); color: var(--text2);
+  line-height: 1.2; text-align: center; min-width: 46px;
+}
+.step-btn .sub { font-size: 9px; font-weight: 400; color: var(--text3); display: block; }
+.step-btn.active {
+  background: rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.5);
+  color: var(--c-acc);
+}
+.step-btn.active .sub { color: rgba(251,191,36,0.6); }
+
+/* PWM phase buttons */
+.pwm-btn {
+  padding: 4px 10px; font-size: 11px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: rgba(255,255,255,0.03); color: var(--text2);
+}
+.pwm-btn.active-on  { background: rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.5); color: var(--c-main); }
+.pwm-btn.active-bd  { background: rgba(167,139,250,0.15); border-color: rgba(167,139,250,0.5); color: var(--c-bd); }
+
+/* Play button */
+.play-btn {
+  padding: 4px 12px; font-size: 11px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: rgba(255,255,255,0.05); color: var(--text);
+}
+.play-btn.playing { border-color: rgba(74,222,128,0.5); color: var(--c-w); background: rgba(74,222,128,0.08); }
+
+/* Legend */
+.legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.leg-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text3); }
+.leg-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.leg-line { width: 14px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+
+/* Main grid */
+#main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 0;
+  padding: 12px;
+}
+@media (max-width: 900px) {
+  #main { grid-template-columns: 1fr; }
+}
+.left-col  { display: flex; flex-direction: column; gap: 8px; padding-right: 8px; border-right: 1px solid var(--border); }
+.right-col { display: flex; flex-direction: column; gap: 8px; padding-left: 8px; }
+
+/* Canvas panels */
+.panel {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.panel-label {
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text3);
+  padding: 5px 8px 2px;
+}
+.panel canvas { width: 100%; display: block; }
+
+/* Explanation panel */
+#expl-panel {
+  flex: 1;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  overflow-y: auto;
+  min-height: 200px;
+}
+.expl-header {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.expl-badge {
+  font-size: 11px; font-weight: 700;
+  background: rgba(251,191,36,0.12); color: var(--c-acc);
+  border: 1px solid rgba(251,191,36,0.25); border-radius: 5px;
+  padding: 2px 8px;
+}
+.expl-tag {
+  font-size: 10px; color: var(--text2);
+  background: rgba(255,255,255,0.06); border-radius: 5px;
+  padding: 2px 7px;
+}
+.pwm-info-box {
+  padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;
+  background: rgba(255,255,255,0.03); font-size: 11px; color: var(--text2);
+  border-left: 3px solid var(--c-main);
+}
+.pwm-info-box .pi-title { font-weight: 700; font-size: 11px; margin-bottom: 2px; }
+.phase-cards { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.phase-card {
+  padding: 7px 10px; border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+}
+.phase-card-hdr {
+  display: flex; gap: 6px; align-items: center;
+  margin-bottom: 3px; flex-wrap: wrap;
+}
+.phase-name { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.phase-role {
+  font-size: 9px; font-weight: 600; border-radius: 4px; padding: 1px 6px;
+}
+.phase-bv { font-size: 12px; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+.phase-desc { font-size: 11px; color: var(--text2); line-height: 1.65; }
+.zc-box {
+  padding: 8px 10px; border-radius: 6px;
+  background: rgba(251,191,36,0.05); border: 1px solid rgba(251,191,36,0.15);
+}
+.zc-title { font-size: 11px; font-weight: 700; color: var(--c-acc); margin-bottom: 4px; }
+.zc-text  { font-size: 11px; color: var(--text2); line-height: 1.7; }
+.zc-text strong { color: var(--c-acc); }
+
+/* Footer */
+#footer {
+  padding: 8px 20px; text-align: center;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--text3);
+}
+#footer a { color: var(--text3); text-decoration: underline; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- Header -->
+<div id="header">
+  <div>
+    <h1>⚡ BLDC Motor 6-Step Commutation Visualizer</h1>
+    <div class="subtitle">4極(2極対)モータの台形波転流を回路図・BEMF波形・ロータ断面図で学ぶ</div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <!-- Row 1: Step -->
+  <div class="ctrl-row">
+    <span class="ctrl-label">ステップ</span>
+    <div id="step-btns" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+  </div>
+  <!-- Row 2: Angle slider + Play -->
+  <div class="ctrl-row">
+    <span class="ctrl-label">ステップ内位置</span>
+    <input type="range" id="frac-slider" min="0" max="59" value="0" step="1" style="width:160px">
+    <span id="frac-label" style="font-size:11px;color:var(--c-acc);font-family:'JetBrains Mono',monospace;min-width:80px">電気角 0°</span>
+    <span id="mech-label" style="font-size:10px;color:var(--text3);min-width:70px">機械角 0.0°</span>
+    <button class="play-btn" id="play-btn">▶ 自動再生</button>
+  </div>
+  <!-- Row 3: PWM phase + Duty -->
+  <div class="ctrl-row">
+    <span class="ctrl-label">PWM位相</span>
+    <button class="pwm-btn active-on" data-pwm="on">ON — 主電流</button>
+    <button class="pwm-btn" data-pwm="off">OFF — LS-BD還流</button>
+    <button class="pwm-btn" data-pwm="comm">転流瞬間 — HS-BD回生</button>
+    <span style="margin-left:10px;font-size:10px;color:var(--text3)">デューティ比</span>
+    <input type="range" id="duty-slider" min="10" max="95" value="60" step="1" style="width:80px">
+    <span id="duty-label" style="font-size:11px;color:var(--c-acc);font-family:'JetBrains Mono',monospace;min-width:30px">60%</span>
+  </div>
+  <!-- Legend -->
+  <div class="ctrl-row">
+    <div class="legend">
+      <div class="leg-item"><span class="leg-dot" style="background:var(--c-u)"></span>U相</div>
+      <div class="leg-item"><span class="leg-dot" style="background:var(--c-v)"></span>V相</div>
+      <div class="leg-item"><span class="leg-dot" style="background:var(--c-w)"></span>W相</div>
+      <div class="leg-item"><span class="leg-line" style="background:var(--c-main)"></span>主電流</div>
+      <div class="leg-item"><span class="leg-line" style="background:var(--c-bd)"></span>BD電流</div>
+      <div class="leg-item"><span class="leg-line" style="background:rgba(139,92,246,0.5)"></span>トルク概念</div>
+      <div class="leg-item"><span class="leg-dot" style="background:var(--c-acc)"></span>ZC点</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div class="left-col">
+    <div class="panel">
+      <div class="panel-label">ロータ断面図（4極 / 2極対）</div>
+      <canvas id="motor-canvas" height="280"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-label">三相インバータ回路図</div>
+      <canvas id="circuit-canvas" height="210"></canvas>
+    </div>
+  </div>
+  <div class="right-col">
+    <div class="panel">
+      <div class="panel-label">BEMF波形（ZC検出 → +30° → 転流）</div>
+      <canvas id="bemf-canvas" height="170"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-label">ゲート信号（1電気周期）</div>
+      <canvas id="gate-canvas" height="100"></canvas>
+    </div>
+    <div id="expl-panel"></div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div id="footer">
+  BLDC Motor 6-Step Commutation Visualizer &nbsp;|&nbsp;
+  理論参照: <a href="https://www.nxp.com/docs/en/application-note/AN1913.pdf" target="_blank">Microchip AN1913</a>,
+  <a href="https://www.ti.com/lit/an/sprabz4/sprabz4.pdf" target="_blank">TI SPRABZ4</a>,
+  <a href="https://www.mathworks.com/help/mcb/gs/six-step-commutation.html" target="_blank">MathWorks Six-Step</a>
+</div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   MOTOR PHYSICS
+   4極(2極対): 電気角 = 機械角 × 2
+   BEMFオフセット: U=150, V=90, W=30
+   → 各ステップ中盤(el[0]+30°)でtrap(deg-offset)=0 ✓
+   コイル正スロット(機械角): U=120°, V=90°, W=60°
+   ============================================================ */
+const POLE_PAIRS = 2;
+const PC = { U:'#f97316', V:'#38bdf8', W:'#4ade80' };
+const BO = { U:150, V:90, W:30 };
+
+const STEPS = [
+  { el:[0,60],   src:'U', dst:'V', mon:'W', uh:1,ul:0, vh:0,vl:1, wh:0,wl:0 },
+  { el:[60,120], src:'U', dst:'W', mon:'V', uh:1,ul:0, vh:0,vl:0, wh:0,wl:1 },
+  { el:[120,180],src:'V', dst:'W', mon:'U', uh:0,ul:0, vh:1,vl:0, wh:0,wl:1 },
+  { el:[180,240],src:'V', dst:'U', mon:'W', uh:0,ul:1, vh:1,vl:0, wh:0,wl:0 },
+  { el:[240,300],src:'W', dst:'U', mon:'V', uh:0,ul:1, vh:0,vl:0, wh:1,wl:0 },
+  { el:[300,360],src:'W', dst:'V', mon:'U', uh:0,ul:0, vh:0,vl:1, wh:1,wl:0 },
+];
+
+function trap(a) {
+  a = ((a % 360) + 360) % 360;
+  if (a < 60)  return a / 60;
+  if (a < 120) return 1;
+  if (a < 180) return 1 - (a - 120) / 60;
+  if (a < 240) return -(a - 180) / 60;
+  if (a < 300) return -1;
+  return -1 + (a - 300) / 60;
+}
+function bemf(ph, el) { return trap(el - BO[ph]); }
+
+// 機械角 → canvas radian（0°=3時、反時計正 → canvas時計正変換）
+function d2r(deg) { return (90 - deg) * Math.PI / 180; }
+
+function getMosState(ph, isH, si, pwm) {
+  const st = STEPS[si];
+  const isSrc = ph === st.src, isDst = ph === st.dst;
+  if (pwm === 'on') {
+    if (isSrc) return isH ? 'pwm' : 'off';
+    if (isDst) return isH ? 'off' : 'on';
+    return 'float';
+  }
+  if (pwm === 'off') {
+    if (isSrc) return isH ? 'off' : 'bd';
+    if (isDst) return isH ? 'off' : 'on';
+    return 'float';
+  }
+  // comm
+  if (isSrc) return 'off';
+  if (isDst) return isH ? 'off' : 'on';
+  return isH ? 'bd' : 'float';
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let si = 0;      // step index 0-5
+let frac = 0;    // 0-59 (deg within step)
+let pwm = 'on';
+let duty = 60;
+let playing = false;
+let rafId = null;
+let lastTs = null;
+let elAcc = 0;
+
+function elDeg() { return STEPS[si].el[0] + frac; }
+function mechDeg() { return elDeg() / POLE_PAIRS; }
+
+/* ============================================================
+   CANVAS SETUP HELPER
+   ============================================================ */
+function setupCanvas(id) {
+  const cv = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth;
+  const H = cv.clientHeight;
+  cv.width  = W * dpr;
+  cv.height = H * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, W, H };
+}
+
+/* ============================================================
+   DRAW HELPERS
+   ============================================================ */
+function arrow(ctx, x, y, ang, col, sz) {
+  sz = sz || 6;
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(x + sz * Math.cos(ang), y + sz * Math.sin(ang));
+  ctx.lineTo(x + sz * Math.cos(ang + 2.5), y + sz * Math.sin(ang + 2.5));
+  ctx.lineTo(x + sz * Math.cos(ang - 2.5), y + sz * Math.sin(ang - 2.5));
+  ctx.closePath(); ctx.fill();
+}
+
+function coilBumps(ctx, x1, x2, y, col, lw) {
+  const n = 3, r = 6, cx = (x1 + x2) / 2;
+  ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.setLineDash([]); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(cx - n * r, y); ctx.stroke();
+  for (let i = 0; i < n; i++) {
+    const bx = cx - n * r + i * 2 * r + r;
+    ctx.beginPath(); ctx.arc(bx, y, r, Math.PI, 0, false); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(cx + n * r, y); ctx.lineTo(x2, y); ctx.stroke();
+}
+
+function dashedSeg(ctx, x1, y1, x2, y2, col, lw) {
+  ctx.strokeStyle = col; ctx.lineWidth = lw || 2.5;
+  ctx.setLineDash([5, 4]); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/* ============================================================
+   DRAW MOTOR CANVAS
+   ============================================================ */
+function drawMotor() {
+  const { ctx, W, H } = setupCanvas('motor-canvas');
+  ctx.clearRect(0, 0, W, H);
+
+  const mX = W / 2, mY = H / 2;
+  const mR = Math.min(W, H) * 0.33;
+  const st = STEPS[si];
+  const mDeg = mechDeg();
+
+  // ステータ外枠（オレンジリング）
+  ctx.beginPath(); ctx.arc(mX, mY, mR + 20, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(180,80,10,0.18)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,110,20,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(mX, mY, mR + 6, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.5; ctx.stroke();
+
+  // 目盛り
+  for (let d = 0; d < 360; d += 5) {
+    const maj = d % 30 === 0;
+    const r1 = mR + 6, r2 = mR + (maj ? 20 : 13);
+    const rad = d2r(d);
+    ctx.strokeStyle = maj ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = maj ? 1 : 0.5; ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(mX + r1 * Math.cos(rad), mY + r1 * Math.sin(rad));
+    ctx.lineTo(mX + r2 * Math.cos(rad), mY + r2 * Math.sin(rad));
+    ctx.stroke();
+    if (maj) {
+      const lr = mR + 29;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = '7px JetBrains Mono,monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(d + '°', mX + lr * Math.cos(rad), mY + lr * Math.sin(rad));
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '8px Noto Sans JP,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('機械角（電気角 = ×2）', mX, mY - mR - 42);
+
+  // コイルスロット（ステータ固定）
+  const COIL_ALL = { U:[[90,'+'],[270,'-']], V:[[210,'+'],[30,'-']], W:[[330,'+'],[150,'-']] };
+  ['U','V','W'].forEach(ph => {
+    const col = PC[ph];
+    const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
+    COIL_ALL[ph].forEach(([ang, sign]) => {
+      const rad = d2r(ang);
+      const cx = mX + (mR + 2) * Math.cos(rad);
+      const cy = mY + (mR + 2) * Math.sin(rad);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(d2r(ang) - Math.PI / 2);
+      const sw = 13, sh = 16;
+      ctx.fillStyle = col + (isMon ? '44' : isSrc || isDst ? '28' : '14');
+      ctx.strokeStyle = isMon ? col + 'dd' : col + (isSrc || isDst ? '99' : '44');
+      ctx.lineWidth = isMon ? 2 : 1; ctx.setLineDash([]);
+      ctx.fillRect(-sw / 2, -sh, sw, sh);
+      ctx.strokeRect(-sw / 2, -sh, sw, sh);
+      if (isSrc || isDst) {
+        const dot = (isSrc && sign === '+') || (isDst && sign === '-');
+        ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+        if (dot) {
+          ctx.beginPath(); ctx.arc(0, -sh / 2, 2.5, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.beginPath(); ctx.moveTo(-3, -sh/2-3); ctx.lineTo(3, -sh/2+3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(3, -sh/2-3); ctx.lineTo(-3, -sh/2+3); ctx.stroke();
+        }
+      }
+      ctx.restore();
+      const llr = mR + 50;
+      const lrad = d2r(ang);
+      ctx.fillStyle = isMon ? col : col + (isSrc || isDst ? 'cc' : '66');
+      ctx.font = (isMon ? 'bold ' : '') + '10px JetBrains Mono,monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(ph + sign, mX + llr * Math.cos(lrad), mY + llr * Math.sin(lrad));
+    });
+  });
+
+  // ロータ（4極・十字型）
+  ctx.save();
+  ctx.translate(mX, mY);
+  ctx.rotate(mDeg * Math.PI / 180); // 時計回りを正転
+
+  const rr = mR * 0.60;
+  ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2);
+  ctx.fillStyle = '#0d1b2a'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 0.5; ctx.stroke();
+
+  // N-S-N-S 4極
+  const poles = [
+    { s: -45, e: 45,   t: 'N' },
+    { s:  45, e: 135,  t: 'S' },
+    { s: 135, e: 225,  t: 'N' },
+    { s: 225, e: 315,  t: 'S' },
+  ];
+  poles.forEach(p => {
+    const a1 = (p.s - 90) * Math.PI / 180;
+    const a2 = (p.e - 90) * Math.PI / 180;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, rr * 0.95, a1, a2); ctx.closePath();
+    ctx.fillStyle = p.t === 'N' ? 'rgba(230,60,30,0.88)' : 'rgba(15,40,150,0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 0.5; ctx.stroke();
+    const mid = ((p.s + p.e) / 2 - 90) * Math.PI / 180;
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.t, rr * 0.58 * Math.cos(mid), rr * 0.58 * Math.sin(mid));
+  });
+
+  // N極矢印（ローカル上方向）
+  ctx.strokeStyle = 'rgba(255,180,160,0.7)'; ctx.lineWidth = 2; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(0, rr * 0.1); ctx.lineTo(0, -rr * 0.88); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,180,160,0.7)';
+  ctx.beginPath(); ctx.moveTo(0, -rr * 0.88); ctx.lineTo(-4, -rr * 0.76); ctx.lineTo(4, -rr * 0.76); ctx.closePath(); ctx.fill();
+
+  ctx.restore();
+
+  // エアギャップ
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5; ctx.setLineDash([2,4]);
+  ctx.beginPath(); ctx.arc(mX, mY, mR * 0.72, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+
+  // 回転方向矢印
+  ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(mX, mY, mR * 0.26, -2.7, -0.9); ctx.stroke();
+  const arAng = -0.9, arR = mR * 0.26;
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.beginPath();
+  ctx.moveTo(mX + arR * Math.cos(arAng), mY + arR * Math.sin(arAng));
+  ctx.lineTo(mX + arR * Math.cos(arAng + 2.2), mY + arR * Math.sin(arAng + 2.2));
+  ctx.lineTo(mX + arR * Math.cos(arAng + 2.8), mY + arR * Math.sin(arAng + 2.8));
+  ctx.closePath(); ctx.fill();
+
+  // 情報テキスト
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px Noto Sans JP,sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('機械角 ' + mDeg.toFixed(1) + '°　電気角 ' + elDeg() + '°', mX, mY + mR + 50);
+  ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 10px Noto Sans JP,sans-serif';
+  ctx.fillText('S' + (si+1) + '  ' + st.src + '→' + st.dst + ' 通電  |  ' + st.mon + '相 BEMF監視', mX, mY + mR + 64);
+}
+
+/* ============================================================
+   DRAW BEMF CANVAS
+   ============================================================ */
+function drawBEMF() {
+  const { ctx, W, H } = setupCanvas('bemf-canvas');
+  ctx.clearRect(0, 0, W, H);
+  const st = STEPS[si];
+  const PAD = { l:42, r:28, t:24, b:22 };
+  const pw = W - PAD.l - PAD.r;
+  const mY = PAD.t + (H - PAD.t - PAD.b) / 2;
+  const amp = (H - PAD.t - PAD.b) * 0.37;
+
+  // ステップ背景
+  ctx.fillStyle = 'rgba(251,191,36,0.07)';
+  ctx.fillRect(PAD.l + (st.el[0]/360)*pw, PAD.t, pw*60/360, H-PAD.t-PAD.b);
+
+  // ステップ区切り
+  for (let s = 0; s <= 6; s++) {
+    const lx = PAD.l + s*60/360*pw;
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(lx, PAD.t); ctx.lineTo(lx, H-PAD.b); ctx.stroke();
+    if (s < 6) {
+      const isCur = s === si;
+      ctx.fillStyle = isCur ? '#fbbf24' : 'rgba(255,255,255,0.2)';
+      ctx.font = (isCur ? 'bold ' : '') + '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('S'+(s+1), lx+pw/12, H-PAD.b+14);
+    }
+  }
+
+  // 零線
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 0.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, mY); ctx.lineTo(W-PAD.r, mY); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px JetBrains Mono,monospace'; ctx.textAlign = 'end';
+  ctx.fillText('+1', PAD.l-3, mY-amp+4);
+  ctx.fillText('0', PAD.l-3, mY+4);
+  ctx.fillText('-1', PAD.l-3, mY+amp+4);
+
+  // トルク概念波形（紫）
+  ctx.strokeStyle = 'rgba(139,92,246,0.4)'; ctx.lineWidth = 1.2; ctx.setLineDash([]);
+  ctx.beginPath();
+  for (let px = 0; px < pw; px++) {
+    const deg = (px/pw)*360;
+    const k = STEPS.findIndex(s2 => deg >= s2.el[0] && deg < s2.el[1]);
+    const ki = k === -1 ? 0 : k;
+    const tq = (bemf(STEPS[ki].src, deg) - bemf(STEPS[ki].dst, deg)) * 0.5;
+    const y = mY - tq*amp;
+    px === 0 ? ctx.moveTo(PAD.l+px, y) : ctx.lineTo(PAD.l+px, y);
+  }
+  ctx.stroke();
+
+  // BEMF波形
+  ['U','V','W'].forEach(ph => {
+    const isMon = ph === st.mon;
+    ctx.strokeStyle = PC[ph]; ctx.lineWidth = isMon ? 2.5 : 0.9;
+    ctx.globalAlpha = isMon ? 1 : 0.22; ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let px = 0; px < pw; px++) {
+      const deg = (px/pw)*360;
+      const y = mY - bemf(ph, deg)*amp;
+      px === 0 ? ctx.moveTo(PAD.l+px, y) : ctx.lineTo(PAD.l+px, y);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+    const ev = bemf(ph, 358);
+    ctx.fillStyle = isMon ? PC[ph] : PC[ph]+'66';
+    ctx.font = (isMon ? 'bold ' : '') + '9px sans-serif';
+    ctx.textAlign = 'start'; ctx.textBaseline = 'middle';
+    ctx.fillText(ph, W-PAD.r+4, mY-ev*amp); ctx.textBaseline = 'alphabetic';
+  });
+
+  // ZCマーカーと矢印
+  const prevZcDeg = (st.el[0]-30+360)%360;
+  const prevZcX   = PAD.l + (prevZcDeg/360)*pw;
+  const currCommX = PAD.l + (st.el[0]/360)*pw;
+  const currZcDeg = st.el[0]+30;
+  const currZcX   = PAD.l + (currZcDeg/360)*pw;
+  const nextCommX = PAD.l + (st.el[1]/360)*pw;
+  const monCol    = PC[st.mon];
+
+  // 前ZC（転流済み）
+  if (prevZcX >= PAD.l && prevZcX <= W-PAD.r) {
+    ctx.fillStyle = monCol+'77';
+    ctx.beginPath(); ctx.arc(prevZcX, mY, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = monCol+'66'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('ZC検出', prevZcX, mY-10);
+    ctx.fillText('(転流済)', prevZcX, mY-19);
+    // 矢印
+    ctx.strokeStyle = 'rgba(251,191,36,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(prevZcX+3, mY+4); ctx.lineTo(currCommX-3, mY+4); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(251,191,36,0.45)';
+    ctx.beginPath(); ctx.moveTo(currCommX-3,mY+4); ctx.lineTo(currCommX-8,mY+1); ctx.lineTo(currCommX-8,mY+7); ctx.closePath(); ctx.fill();
+    ctx.font = '8px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(251,191,36,0.45)';
+    ctx.fillText('+30°', (prevZcX+currCommX)/2, mY+14);
+  }
+
+  // 現ステップ開始縦線
+  if (currCommX >= PAD.l && currCommX <= W-PAD.r) {
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(currCommX, PAD.t+2); ctx.lineTo(currCommX, H-PAD.b-2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('S'+(si+1)+'開始', currCommX, PAD.t+10);
+    ctx.fillText('(転流点)', currCommX, PAD.t+19);
+  }
+
+  // 現ステップ内ZC（次転流トリガー）
+  if (currZcX >= PAD.l && currZcX <= W-PAD.r) {
+    ctx.fillStyle = monCol;
+    ctx.beginPath(); ctx.arc(currZcX, mY, 4.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = monCol; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('ZC検出', currZcX, mY-11);
+    ctx.fillText('(次転流トリガー)', currZcX, mY+16);
+    if (nextCommX >= PAD.l && nextCommX <= W-PAD.r) {
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(currZcX+3, mY-4); ctx.lineTo(nextCommX-3, mY-4); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath(); ctx.moveTo(nextCommX-3,mY-4); ctx.lineTo(nextCommX-8,mY-7); ctx.lineTo(nextCommX-8,mY-1); ctx.closePath(); ctx.fill();
+      ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('+30°', (currZcX+nextCommX)/2, mY-9);
+    }
+  }
+
+  // 次転流点縦線
+  if (nextCommX >= PAD.l && nextCommX <= W-PAD.r) {
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(nextCommX, PAD.t+2); ctx.lineTo(nextCommX, H-PAD.b-2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('S'+((si+1)%6+1)+'開始', nextCommX, PAD.t+10);
+    ctx.fillText('(次転流)', nextCommX, PAD.t+19);
+  }
+
+  ctx.fillStyle = monCol; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'start';
+  ctx.fillText(st.mon+'相 BEMF監視中 (Hi-Z)', PAD.l+2, PAD.t+12);
+  ctx.fillStyle = 'rgba(139,92,246,0.55)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'end';
+  ctx.fillText('トルク概念', W-PAD.r-2, PAD.t+12);
+
+  // カーソル
+  const curX = PAD.l + (elDeg()/360)*pw;
+  ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(curX, PAD.t); ctx.lineTo(curX, H-PAD.b); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 9px JetBrains Mono,monospace'; ctx.textAlign = 'center';
+  ctx.fillText(elDeg()+'°', curX, PAD.t+9);
+
+  const yOff = [-6, 4, 12];
+  ['U','V','W'].forEach((ph, pi) => {
+    const bv = bemf(ph, elDeg());
+    const dy = mY - bv*amp;
+    ctx.fillStyle = PC[ph]; ctx.beginPath(); ctx.arc(curX, dy, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = PC[ph]; ctx.font = 'bold 9px JetBrains Mono,monospace';
+    ctx.textAlign = elDeg() > 300 ? 'end' : 'start';
+    ctx.fillText(bv.toFixed(2), elDeg()>300 ? curX-6 : curX+6, dy+yOff[pi]);
+  });
+
+  for (let d = 0; d <= 360; d += 60) {
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(d+'°', PAD.l+(d/360)*pw, H-PAD.b+14);
+  }
+}
+
+/* ============================================================
+   DRAW CIRCUIT CANVAS
+   ============================================================ */
+function drawCircuit() {
+  const { ctx, W, H } = setupCanvas('circuit-canvas');
+  ctx.clearRect(0, 0, W, H);
+  const st = STEPS[si];
+  const Vy = 22, Gy = H-22;
+  const phX = [W*0.20, W*0.50, W*0.80];
+  const mhY=Vy+26, mhH=28, mlH=28, mlY=Gy-54;
+  const ntY=mhY+mhH, nbY=mlY, coilY=(ntY+nbY)/2;
+  const OW = 'rgba(255,255,255,0.10)';
+  const MAIN = '#fbbf24', BD = '#a78bfa';
+
+  ctx.strokeStyle = 'rgba(200,110,20,0.55)'; ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(16,Vy); ctx.lineTo(W-16,Vy); ctx.stroke();
+  ctx.fillStyle = '#d97706'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'start';
+  ctx.fillText('Vbus (+)', 20, Vy-5);
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(16,Gy); ctx.lineTo(W-16,Gy); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '10px sans-serif';
+  ctx.fillText('GND', 20, Gy+13);
+
+  function wl(x1,y1,x2,y2,col,lw) {
+    ctx.strokeStyle=col; ctx.lineWidth=lw||0.5; ctx.setLineDash([]); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+
+  function drawMOS(cx, isH, state, col) {
+    const y=isH?mhY:mlY, w=38, h=isH?mhH:mlH, x=cx-w/2;
+    const act=state==='on'||state==='pwm'||state==='bd';
+    const ac=state==='bd'?BD:act?col:'rgba(255,255,255,0.12)';
+    ctx.fillStyle=act?ac+'1e':'rgba(255,255,255,0.02)';
+    ctx.strokeStyle=act?ac:'rgba(255,255,255,0.12)'; ctx.lineWidth=act?1.5:0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.roundRect(x,y,w,h,4); ctx.fill(); ctx.stroke();
+    const lbl=state==='pwm'?'PWM':state==='on'?'ON':state==='off'?'OFF':state==='bd'?'BD':'Hi-Z';
+    ctx.font=(act?'bold ':'')+' 10px JetBrains Mono,monospace';
+    ctx.fillStyle=state==='bd'?BD:act?col:'rgba(255,255,255,0.28)';
+    ctx.textAlign='center'; ctx.fillText(lbl,cx,y+h/2+4);
+    const da=isH?1:-1, dy2=isH?y+h-8:y+8, t=4;
+    ctx.fillStyle=state==='bd'?BD+'88':'rgba(255,255,255,0.07)';
+    ctx.strokeStyle=state==='bd'?BD:'rgba(255,255,255,0.12)'; ctx.lineWidth=state==='bd'?1.5:0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx-t,dy2-da*t); ctx.lineTo(cx+t,dy2-da*t); ctx.lineTo(cx,dy2+da*t);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-t,dy2+da*t); ctx.lineTo(cx+t,dy2+da*t); ctx.stroke();
+  }
+
+  ['U','V','W'].forEach((ph,pi) => {
+    const cx=phX[pi], col=PC[ph];
+    const hs=getMosState(ph,true,si,pwm), ls=getMosState(ph,false,si,pwm);
+    const aH=hs==='on'||hs==='pwm'||hs==='bd', aL=ls==='on'||ls==='bd';
+    wl(cx,Vy,cx,mhY,aH?col:OW,aH?1.5:0.5);
+    drawMOS(cx,true,hs,col);
+    wl(cx,mhY+mhH,cx,coilY-7,aH||aL?col:OW,aH||aL?1.5:0.5);
+    wl(cx,coilY+7,cx,mlY,aL?col:OW,aL?1.5:0.5);
+    drawMOS(cx,false,ls,col);
+    wl(cx,mlY+mlH,cx,Gy,aL?col:OW,aL?1.5:0.5);
+    ctx.fillStyle=col; ctx.font='bold 10px JetBrains Mono,monospace'; ctx.textAlign='center';
+    ctx.fillText(ph,cx,mhY-5);
+  });
+
+  const sx=phX[['U','V','W'].indexOf(st.src)];
+  const dx=phX[['U','V','W'].indexOf(st.dst)];
+  const mx=phX[['U','V','W'].indexOf(st.mon)];
+
+  coilBumps(ctx, Math.min(sx,dx), Math.max(sx,dx), coilY, MAIN, 2);
+  ctx.fillStyle=MAIN; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText(st.src+'→'+st.dst+' コイル', (sx+dx)/2, coilY-12);
+
+  ctx.lineCap='round'; ctx.lineJoin='round';
+
+  if (pwm === 'on') {
+    [
+      [sx,Vy+2,sx,mhY+mhH/2],
+      [sx,mhY+mhH,sx,coilY],
+      [dx,coilY,dx,mlY],
+      [dx,mlY+mlH,dx,Gy-2],
+    ].forEach(([x1,y1,x2,y2]) => dashedSeg(ctx,x1,y1,x2,y2,MAIN));
+    arrow(ctx,sx,(Vy+mhY)/2,Math.PI/2,MAIN);
+    arrow(ctx,sx,(mhY+mhH+coilY)/2,Math.PI/2,MAIN);
+    arrow(ctx,dx,(coilY+mlY)/2,Math.PI/2,MAIN);
+    arrow(ctx,dx,(mlY+mlH+Gy)/2,Math.PI/2,MAIN);
+
+  } else if (pwm === 'off') {
+    [
+      [sx,Gy-2,sx,mlY+mlH],
+      [sx,mlY,sx,coilY],
+      [dx,coilY,dx,mlY],
+      [dx,mlY+mlH,dx,Gy-2],
+    ].forEach(([x1,y1,x2,y2]) => dashedSeg(ctx,x1,y1,x2,y2,BD));
+    ctx.strokeStyle=BD; ctx.lineWidth=2.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(sx,Gy-2); ctx.lineTo(dx,Gy-2); ctx.stroke(); ctx.setLineDash([]);
+    arrow(ctx,sx,mlY+mlH+5,-Math.PI/2,BD);
+    arrow(ctx,sx,(mlY+coilY)/2,-Math.PI/2,BD);
+    arrow(ctx,dx,(coilY+mlY)/2,Math.PI/2,BD);
+    arrow(ctx,dx,(mlY+mlH+Gy)/2,Math.PI/2,BD);
+    arrow(ctx,(sx+dx)/2+(sx<dx?4:-4),Gy-2,sx<dx?Math.PI:0,BD,5);
+    ctx.fillStyle=BD; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('LS-BD 還流（Vbus不使用）',(sx+dx)/2,Gy+12);
+
+  } else {
+    [
+      [sx,coilY,sx,mhY+mhH+4],
+      [mx,coilY,mx,mhY+mhH/2],
+      [mx,mhY,mx,Vy+2],
+    ].forEach(([x1,y1,x2,y2]) => dashedSeg(ctx,x1,y1,x2,y2,BD));
+    ctx.strokeStyle=BD; ctx.lineWidth=2.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(mx,Vy+2); ctx.lineTo(sx,Vy+2); ctx.stroke(); ctx.setLineDash([]);
+    arrow(ctx,mx,(mhY+Vy)/2,-Math.PI/2,BD);
+    arrow(ctx,(mx+sx)/2+(mx>sx?4:-4),Vy+2,mx>sx?Math.PI:0,BD,5);
+    dashedSeg(ctx,dx,coilY,dx,mlY,BD,1.5);
+    dashedSeg(ctx,dx,mlY+mlH,dx,Gy-2,BD,1.5);
+    ctx.fillStyle=BD; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(st.mon+'_H BD: ノード電位>Vbus → 回生',(mx+sx)/2,Vy-5);
+    ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='9px sans-serif';
+    ctx.fillText('電流向きは前ステップと同じ',(mx+sx)/2,Vy-15);
+  }
+
+  // BEMF監視線
+  const mmY=(ntY+nbY)/2;
+  const ad=['U','V','W'].indexOf(st.mon)===2?-1:1;
+  ctx.setLineDash([3,3]); ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mx,mmY); ctx.lineTo(mx+ad*44,mmY); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='9px sans-serif';
+  ctx.textAlign=ad>0?'start':'end';
+  ctx.fillText('ADC', mx+ad*47, mmY+4);
+  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.5;
+  ctx.strokeRect(mx-5,mmY+7,10,11);
+  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='8px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('R',mx,mmY+16);
+}
+
+/* ============================================================
+   DRAW GATE SIGNAL CANVAS
+   ============================================================ */
+function drawGate() {
+  const { ctx, W, H } = setupCanvas('gate-canvas');
+  ctx.clearRect(0, 0, W, H);
+  const PAD = { l:34, r:8, t:7, b:14 };
+  const pw = W-PAD.l-PAD.r, ph3H=(H-PAD.t-PAD.b)/3;
+
+  ctx.fillStyle='rgba(251,191,36,0.08)';
+  ctx.fillRect(PAD.l+(si/6)*pw, PAD.t, pw/6, H-PAD.t-PAD.b);
+
+  for (let s = 0; s <= 6; s++) {
+    const lx = PAD.l+(s/6)*pw;
+    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(lx,PAD.t); ctx.lineTo(lx,H-PAD.b); ctx.stroke();
+    if (s<6) {
+      const isCur=s===si;
+      ctx.fillStyle=isCur?'#fbbf24':'rgba(255,255,255,0.2)';
+      ctx.font=(isCur?'bold ':'')+' 8px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('S'+(s+1), lx+pw/12, H-1);
+    }
+  }
+
+  ['U','V','W'].forEach((ph,pi) => {
+    const by=PAD.t+pi*ph3H, hiY=by+2, loY=by+ph3H-5, midY=(hiY+loY)/2;
+    const col=PC[ph];
+    ctx.fillStyle=col; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='end';
+    ctx.fillText(ph, PAD.l-3, midY+3);
+
+    for (let s2=0; s2<6; s2++) {
+      const sst=STEPS[s2];
+      const hs=[sst.uh,sst.vh,sst.wh][pi], ls=[sst.ul,sst.vl,sst.wl][pi];
+      const fx=PAD.l+(s2/6)*pw, fw=pw/6, isCur=s2===si;
+      ctx.globalAlpha=isCur?1:0.18;
+      ctx.strokeStyle=col; ctx.lineCap='square';
+
+      if (hs) {
+        const np=5, sg=fw/np, on=sg*(duty/100);
+        ctx.lineWidth=isCur?2:0.7; ctx.setLineDash([]);
+        ctx.beginPath();
+        for (let p=0;p<np;p++) {
+          const px=fx+p*sg;
+          ctx.moveTo(px,loY); ctx.lineTo(px,hiY); ctx.lineTo(px+on,hiY);
+          ctx.lineTo(px+on,loY); ctx.lineTo(px+sg,loY);
+        }
+        ctx.stroke();
+      } else if (ls) {
+        ctx.lineWidth=isCur?2:0.7; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(fx,loY); ctx.lineTo(fx+fw,loY); ctx.stroke();
+      } else {
+        ctx.lineWidth=isCur?1:0.5; ctx.setLineDash([2,2]);
+        ctx.beginPath(); ctx.moveTo(fx,midY); ctx.lineTo(fx+fw,midY); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.globalAlpha=1;
+
+      if (isCur) {
+        const sst2=STEPS[si];
+        const lbl=[sst2.uh,sst2.vh,sst2.wh][pi]?('PWM '+duty+'%'):
+                  [sst2.ul,sst2.vl,sst2.wl][pi]?'LOW':'Hi-Z';
+        ctx.fillStyle=[sst2.uh,sst2.vh,sst2.wh][pi]?col:
+                      [sst2.ul,sst2.vl,sst2.wl][pi]?col:'rgba(255,255,255,0.25)';
+        ctx.font='bold 8px sans-serif'; ctx.textAlign='center';
+        ctx.fillText(lbl, fx+fw/2, by+1);
+      }
+    }
+  });
+
+  const curX=PAD.l+(si/6)*pw+pw/12;
+  ctx.strokeStyle='rgba(251,191,36,0.6)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(curX,PAD.t); ctx.lineTo(curX,H-PAD.b); ctx.stroke(); ctx.setLineDash([]);
+}
+
+/* ============================================================
+   EXPLANATION PANEL
+   ============================================================ */
+const STEP_EXPLS = [
+  {
+    title:'S1（電気角 0°〜60°）', conduction:'U→V 通電', monitor:'W相 BEMF監視',
+    phaseDesc: {
+      W: bv => `Hi-Z（フロート）。S1開始(0°)でN極がW+スロット(機械角60°)の真横→鎖交磁束Φ_W=0→上向きZC済み。以降N極がW+へ近づくにつれΦ_W増加→BEMF上昇中(${bv})。S1中盤(30°)でZC確認→S2への転流トリガー。`,
+      V: bv => `dst側（LS ON）。N極がV+スロット(機械角90°)をほぼ正対→Φ_V最大→BEMF≈+1の平坦部(${bv})。S1後半からN極が通過しBEMFが下降へ。`,
+      U: bv => `src側（HS PWM）。S極がU+スロット(機械角120°)付近→Φ_U負方向→BEMFが0→−1へ下降中(${bv})。`,
+    }
+  },
+  {
+    title:'S2（電気角 60°〜120°）', conduction:'U→W 通電', monitor:'V相 BEMF監視',
+    phaseDesc: {
+      V: bv => `Hi-Z（フロート）。S2開始(60°)でN極がV+スロット(機械角90°)を通過直後→Φ_V最大から減少→下向きBEMF斜面(${bv})。S2中盤(90°)でΦ_V=0→下向きZC→S3への転流トリガー。`,
+      W: bv => `dst側（LS ON）。N極がW+に正対→Φ_W最大→BEMF≈+1の平坦部(${bv})。`,
+      U: bv => `src側（HS PWM）。S極がU+付近→Φ_U負最大→BEMF≈−1の平坦部(${bv})。`,
+    }
+  },
+  {
+    title:'S3（電気角 120°〜180°）', conduction:'V→W 通電', monitor:'U相 BEMF監視',
+    phaseDesc: {
+      U: bv => `Hi-Z（フロート）。S3開始(120°)でN極がU+スロット(機械角120°)へ接近→Φ_U増加→上向きBEMF斜面(${bv})。S3中盤(150°)でZC（上向き）→S4への転流トリガー。`,
+      W: bv => `dst側（LS ON）。N極がW+を通過し離れる→Φ_W減少→BEMF+1から下降中(${bv})。`,
+      V: bv => `src側（HS PWM）。S極がV+付近→Φ_V負→BEMF負の値(${bv})。`,
+    }
+  },
+  {
+    title:'S4（電気角 180°〜240°）', conduction:'V→U 通電', monitor:'W相 BEMF監視',
+    phaseDesc: {
+      W: bv => `Hi-Z（フロート）。S4開始(180°)でN極がW+を通過完了→S極がW+に接近→Φ_Wがゼロから負へ→下向きBEMF斜面(${bv})。S4中盤(210°)でZC（下向き）→S5への転流トリガー。`,
+      U: bv => `dst側（LS ON）。N極がU+に正対→Φ_U最大→BEMF≈+1の平坦部(${bv})。`,
+      V: bv => `src側（HS PWM）。S極がV+に正対→Φ_V負最大→BEMF≈−1の平坦部(${bv})。`,
+    }
+  },
+  {
+    title:'S5（電気角 240°〜300°）', conduction:'W→U 通電', monitor:'V相 BEMF監視',
+    phaseDesc: {
+      V: bv => `Hi-Z（フロート）。S5開始(240°)でN極がV+スロット(機械角90°)へ接近→Φ_V増加→上向きBEMF斜面(${bv})。S5中盤(270°)でZC（上向き）→S6への転流トリガー。`,
+      U: bv => `dst側（LS ON）。N極がU+を通過し離れる→Φ_U減少→BEMF+1から下降(${bv})。`,
+      W: bv => `src側（HS PWM）。S極がW+付近→Φ_W負→BEMF負の値(${bv})。`,
+    }
+  },
+  {
+    title:'S6（電気角 300°〜360°）', conduction:'W→V 通電', monitor:'U相 BEMF監視',
+    phaseDesc: {
+      U: bv => `Hi-Z（フロート）。S6開始(300°)でS極がU+付近を通過→Φ_Uがマイナスからゼロへ変化→BEMFが負から正へ(${bv})。S6中盤(330°)で下向きZC→S1への転流トリガー（30°後=0°でS1開始）。`,
+      V: bv => `dst側（LS ON）。N極がV+に近づく→Φ_V増加→BEMF上昇(${bv})。S6後半で+1平坦部へ（S1のdstとして準備完了）。`,
+      W: bv => `src側（HS PWM）。S極がW+通過後→BEMF−1平坦部が終わりZCへ向かう(${bv})。`,
+    }
+  },
+];
+
+const PWM_INFO = {
+  on:   { label:'ON期間（主電流）',          cls:'active-on',
+          getDesc: st => `Vbus → ${st.src}_H(PWM) → コイル → ${st.dst}_L(ON) → GND` },
+  off:  { label:'OFF期間（LS-BD還流）',       cls:'active-bd',
+          getDesc: st => `コイル残留電流 → GND → ${st.src}_L(BD) → コイル → ${st.dst}_L(ON) → GND（Vbus不使用）` },
+  comm: { label:'転流瞬間（HS-BD回生）',      cls:'active-bd',
+          getDesc: st => `コイル残留電流 → ${st.mon}_H(BD) → Vbus へ回生（${st.mon}ノード電位がVbus超え）` },
+};
+
+function updateExplPanel() {
+  const st = STEPS[si];
+  const exp = STEP_EXPLS[si];
+  const elD = elDeg();
+  const pi = PWM_INFO[pwm];
+
+  const phaseHTML = ['W','V','U'].map(ph => {
+    const bv = bemf(ph, elD).toFixed(2);
+    const col = PC[ph];
+    const isMon = ph === st.mon, isSrc = ph === st.src, isDst = ph === st.dst;
+    const role = isMon ? '監視(Hi-Z)' : isSrc ? 'src (PWM)' : 'dst (ON)';
+    return `
+<div class="phase-card" style="border-left:3px solid ${col}">
+  <div class="phase-card-hdr">
+    <span class="phase-name" style="color:${col}">${ph}相</span>
+    <span class="phase-role" style="color:${col};background:${col}1a">${role}</span>
+    <span class="phase-bv" style="color:${col}">BEMF = ${bv}</span>
+  </div>
+  <div class="phase-desc">${exp.phaseDesc[ph](bv)}</div>
+</div>`;
+  }).join('');
+
+  const nextSi = (si+1)%6;
+  document.getElementById('expl-panel').innerHTML = `
+<div class="expl-header">
+  <span class="expl-badge">${exp.title}</span>
+  <span class="expl-tag">${exp.conduction}</span>
+  <span class="expl-tag" style="color:${PC[st.mon]}">${exp.monitor}</span>
+</div>
+<div class="pwm-info-box" style="border-color:${pwm==='on'?'#fbbf24':'#a78bfa'}">
+  <div class="pi-title" style="color:${pwm==='on'?'#fbbf24':'#a78bfa'}">${pi.label}</div>
+  <div>${pi.getDesc(st)}</div>
+</div>
+<div class="phase-cards">${phaseHTML}</div>
+<div class="zc-box">
+  <div class="zc-title">⚡ ZCタイミングと転流ロジック</div>
+  <div class="zc-text">
+    <span style="color:${PC[st.mon]}">${st.mon}相BEMF</span>のゼロクロスを
+    <strong>電気角${(st.el[0]-30+360)%360}°で検出</strong>済み → 30°待機 →
+    <strong>電気角${st.el[0]}°でS${si+1}開始</strong>（転流点）<br>
+    S${si+1}内の電気角${st.el[0]+30}°で次のZCを検出 → 30°後の${st.el[1]}°でS${nextSi+1}へ転流
+  </div>
+</div>`;
+}
+
+/* ============================================================
+   MASTER REDRAW
+   ============================================================ */
+function redrawAll() {
+  drawMotor();
+  drawBEMF();
+  drawCircuit();
+  drawGate();
+  updateExplPanel();
+}
+
+/* ============================================================
+   CONTROLS SETUP
+   ============================================================ */
+// Step buttons
+const stepBtnContainer = document.getElementById('step-btns');
+STEPS.forEach((st, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'step-btn' + (i === 0 ? ' active' : '');
+  btn.innerHTML = `S${i+1}<span class="sub">${st.src}→${st.dst}</span>`;
+  btn.onclick = () => {
+    si = i; frac = 0; elAcc = i * 60;
+    setPlaying(false);
+    document.getElementById('frac-slider').value = 0;
+    updateLabels();
+    document.querySelectorAll('.step-btn').forEach((b,j) => b.classList.toggle('active', j===i));
+    redrawAll();
+  };
+  stepBtnContainer.appendChild(btn);
+});
+
+// Frac slider
+document.getElementById('frac-slider').oninput = function() {
+  frac = +this.value;
+  elAcc = si * 60 + frac;
+  updateLabels();
+  redrawAll();
+};
+
+// PWM buttons
+document.querySelectorAll('.pwm-btn').forEach(btn => {
+  btn.onclick = function() {
+    pwm = this.dataset.pwm;
+    document.querySelectorAll('.pwm-btn').forEach(b => {
+      b.classList.remove('active-on','active-bd');
+    });
+    this.classList.add(PWM_INFO[pwm].cls);
+    redrawAll();
+  };
+});
+
+// Duty slider
+document.getElementById('duty-slider').oninput = function() {
+  duty = +this.value;
+  document.getElementById('duty-label').textContent = duty + '%';
+  redrawAll();
+};
+
+// Play button
+function setPlaying(val) {
+  playing = val;
+  const btn = document.getElementById('play-btn');
+  btn.textContent = playing ? '⏸ 一時停止' : '▶ 自動再生';
+  btn.classList.toggle('playing', playing);
+  if (!playing) {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    lastTs = null;
+  } else {
+    startAnimation();
+  }
+}
+document.getElementById('play-btn').onclick = () => setPlaying(!playing);
+
+function startAnimation() {
+  const SPEED = 40; // deg/sec
+  function tick(ts) {
+    if (!playing) return;
+    if (lastTs === null) lastTs = ts;
+    const dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    elAcc = (elAcc + SPEED * dt) % 360;
+    const newSi = Math.floor(elAcc / 60) % 6;
+    const newFrac = Math.round(elAcc % 60);
+    if (newSi !== si) {
+      si = newSi;
+      document.querySelectorAll('.step-btn').forEach((b,i) => b.classList.toggle('active', i===si));
+    }
+    frac = newFrac < 59 ? newFrac : 59;
+    document.getElementById('frac-slider').value = frac;
+    updateLabels();
+    redrawAll();
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function updateLabels() {
+  const el = elDeg(), mech = mechDeg();
+  document.getElementById('frac-label').textContent = `電気角 ${el}°`;
+  document.getElementById('mech-label').textContent  = `機械角 ${mech.toFixed(1)}°`;
+}
+
+// Resize
+let resizeTimer;
+window.onresize = () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(redrawAll, 80);
+};
+
+// Initial draw
+redrawAll();
+</script>
+</body>
+</html>
