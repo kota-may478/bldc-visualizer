@@ -426,72 +426,100 @@ function dashedSeg(ctx, x1, y1, x2, y2, col, lw) {
 
 /* ============================================================
    DRAW MOTOR CANVAS
-   左端からUVW配線が来てステータコイルスロットへ接続される
+   左端に端子（U/V/W）、スター結線でコイルを接続、中性点を中央付近に描画
    ============================================================ */
 function drawMotor() {
   const { ctx, W, H } = setupCanvas('motor-canvas');
   ctx.clearRect(0, 0, W, H);
 
-  const mX = W / 2 + 12, mY = H / 2;
+  const mX = W / 2 + 16, mY = H / 2;
   const mR = Math.min(W - 30, H) * 0.33;
   const st = STEPS[si];
   const mDeg = mechDeg();
 
-  // --- 左端からの三相配線引き込み ---
-  // コイルスロット接続点（ステータ外周上）に向けた配線
-  const COIL_MECH = { U: [90, 270], V: [210, 30], W: [330, 150] };
-  // 各相の「+スロット」への接続ラインを左端から引く
+  // 各相の端子Y位置（回路図の引き出し線に対応：coilY + (pi-1)*14）
+  // motor canvasの高さとcircuit canvasの高さが同じなので相対位置で合わせる
+  const circuitH = document.getElementById('circuit-canvas').clientHeight || H;
+  const circCoilY = circuitH / 2; // drawCircuit内の coilY = (ntY+nbY)/2 ≈ H/2
+  const termYs = {
+    U: circCoilY + (0 - 1) * 14,
+    V: circCoilY + (1 - 1) * 14,
+    W: circCoilY + (2 - 1) * 14,
+  };
+
+  // ---- 左端の端子とモータ外周スロットへの接続配線 ----
+  const COIL_PLUS_ANG = { U: 90, V: 210, W: 330 }; // +スロット機械角
+  const COIL_MINUS_ANG = { U: 270, V: 30, W: 150 }; // −スロット機械角
+
+  // 中性点（スター結線）の描画座標：ロータ内部中央やや左
+  const neutX = mX - mR * 0.18, neutY = mY;
+
   ['U', 'V', 'W'].forEach(ph => {
     const col = PC[ph];
     const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
     const active = isSrc || isDst;
 
-    // +スロット（電流の入り口）の機械角
-    const plusAng = COIL_MECH[ph][0];
-    const rad = d2r(plusAng);
-    const slotX = mX + (mR + 2) * Math.cos(rad);
-    const slotY = mY + (mR + 2) * Math.sin(rad);
+    const termY = termYs[ph];
+    const termX = 4; // 左端
 
-    // 左端の接続点 Y（スロットYに合わせる）
-    const wireX0 = 0;
-    const wireY0 = slotY;
+    // +スロット座標（ステータ外周）
+    const plusRad = d2r(COIL_PLUS_ANG[ph]);
+    const psx = mX + (mR + 2) * Math.cos(plusRad);
+    const psy = mY + (mR + 2) * Math.sin(plusRad);
 
-    // 配線ライン（左端 → スロット手前）
-    ctx.strokeStyle = active ? col : (isMon ? col + '88' : col + '33');
-    ctx.lineWidth = active ? 2 : (isMon ? 1 : 0.5);
-    ctx.setLineDash(active ? [] : [3, 3]);
+    // −スロット座標（ステータ外周）
+    const minusRad = d2r(COIL_MINUS_ANG[ph]);
+    const pmx2 = mX + (mR * 0.68) * Math.cos(minusRad);
+    const pmy2 = mY + (mR * 0.68) * Math.sin(minusRad);
+
+    // 端子から+スロットへの配線（L字）
+    const wireCol = active ? col : (isMon ? col + 'aa' : col + '33');
+    const wireW = active ? 2 : (isMon ? 1 : 0.5);
+    ctx.strokeStyle = wireCol; ctx.lineWidth = wireW;
+    ctx.setLineDash(active ? [] : (isMon ? [3, 3] : [2, 4]));
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(wireX0, wireY0);
-    // L字で接続（左端→スロット付近）
-    ctx.lineTo(slotX - 6, wireY0);
-    ctx.lineTo(slotX - 6, slotY);
-    ctx.lineTo(slotX, slotY);
+    ctx.moveTo(termX, termY);
+    ctx.lineTo(psx - 8, termY);   // 水平
+    ctx.lineTo(psx - 8, psy);      // 垂直
+    ctx.lineTo(psx, psy);          // スロットへ
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 左端コネクタ端子
-    ctx.fillStyle = active ? col : (isMon ? col + 'aa' : col + '44');
-    ctx.beginPath(); ctx.arc(wireX0 + 3, wireY0, 3, 0, Math.PI * 2); ctx.fill();
-    // 相ラベル
-    ctx.fillStyle = active ? col : (isMon ? col + 'cc' : col + '55');
+    // 端子ドット
+    ctx.fillStyle = active ? col : (isMon ? col + 'cc' : col + '44');
+    ctx.beginPath(); ctx.arc(termX + 3, termY, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = active ? col : (isMon ? col + 'dd' : col + '55');
     ctx.font = (active ? 'bold ' : '') + '9px JetBrains Mono,monospace';
     ctx.textAlign = 'start'; ctx.textBaseline = 'bottom';
-    ctx.fillText(ph, wireX0 + 7, wireY0 - 1);
+    ctx.fillText(ph, termX + 8, termY - 1);
     ctx.textBaseline = 'alphabetic';
 
-    // 電流方向矢印（アクティブ相のみ）
+    // 電流矢印（端子→+スロット経路の中間）
     if (active) {
-      const arX = (wireX0 + slotX) / 2 - 10, arY = wireY0;
-      const dir = isSrc ? 0 : Math.PI; // src: →方向, dst: ←方向
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.moveTo(arX + 6 * Math.cos(dir), arY + 6 * Math.sin(dir));
-      ctx.lineTo(arX + 6 * Math.cos(dir + 2.3), arY + 6 * Math.sin(dir + 2.3));
-      ctx.lineTo(arX + 6 * Math.cos(dir - 2.3), arY + 6 * Math.sin(dir - 2.3));
-      ctx.closePath(); ctx.fill();
+      const midX = (termX + psx) / 2 - 10, midY = termY;
+      const dir = isSrc ? 0 : Math.PI;
+      arrow(ctx, midX, midY, dir, col, 5);
     }
+
+    // −スロットから中性点への配線
+    const monWireCol = active ? col + 'cc' : col + '22';
+    ctx.strokeStyle = monWireCol; ctx.lineWidth = active ? 1.5 : 0.5; ctx.setLineDash(active ? [3, 2] : [1, 4]);
+    ctx.beginPath(); ctx.moveTo(pmx2, pmy2); ctx.lineTo(neutX, neutY); ctx.stroke();
+    ctx.setLineDash([]);
   });
+
+  // 中性点（N点）描画
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath(); ctx.arc(neutX, neutY, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(neutX, neutY, 4.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.font = 'bold 8px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('N', neutX, neutY);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '7px sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillText('中性点', neutX, neutY + 6);
+  ctx.textBaseline = 'alphabetic';
 
   // ステータ外枠（オレンジリング）
   ctx.beginPath(); ctx.arc(mX, mY, mR + 20, 0, Math.PI * 2);
@@ -562,50 +590,30 @@ function drawMotor() {
   });
 
   // ---- 通電コイルの磁界ベクトル表示 ----
-  // 各相の磁極方向：コイル+スロットからロータ中心への方向
-  // +スロット角度がN極の向きになる（電流が内向きのスロット側）
-  const COIL_PLUS_ANG = { U: 90, V: 210, W: 330 }; // +スロットの機械角
+  const COIL_PLUS_ANG2 = { U: 90, V: 210, W: 330 };
   ['U', 'V', 'W'].forEach(ph => {
     const isSrc = ph === st.src, isDst = ph === st.dst;
-    if (!isSrc && !isDst) return; // 通電していない相はスキップ
+    if (!isSrc && !isDst) return;
     const col = PC[ph];
-
-    // 磁極方向：+スロット側がN（電流内向き=src）か S（電流外向き=dst）かで向きが変わる
-    // srcの+スロット：電流が紙面奥（×）→右手則でロータ側にN極
-    // dstの+スロット：電流が紙面手前（●）→右手則でロータ側にS極
-    // → コイルが作る磁界のN極はsrcの+スロット方向を向く
-    const fluxAngMech = isSrc ? COIL_PLUS_ANG[ph] : (COIL_PLUS_ANG[ph] + 180) % 360;
+    const fluxAngMech = isSrc ? COIL_PLUS_ANG2[ph] : (COIL_PLUS_ANG2[ph] + 180) % 360;
     const fluxRad = d2r(fluxAngMech);
-
-    // エアギャップ内側から中心に向かう矢印（N極がロータに入る方向）
-    const r0 = mR * 0.73; // エアギャップ外端
-    const r1 = mR * 0.62; // エアギャップ内端（ロータ表面付近）
+    const r0 = mR * 0.73, r1 = mR * 0.62;
     const fx0 = mX + r0 * Math.cos(fluxRad), fy0 = mY + r0 * Math.sin(fluxRad);
     const fx1 = mX + r1 * Math.cos(fluxRad), fy1 = mY + r1 * Math.sin(fluxRad);
-
-    // 矢印本体
-    ctx.strokeStyle = col + 'cc'; ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    ctx.lineCap = 'round';
+    ctx.strokeStyle = col + 'cc'; ctx.lineWidth = 2.5; ctx.setLineDash([]); ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(fx0, fy0); ctx.lineTo(fx1, fy1); ctx.stroke();
-
-    // 矢印ヘッド（r1 の先端）
-    const headAng = fluxRad; // 中心向き
-    const hw = 5, hl = 8;
+    const headAng = fluxRad, hw = 5, hl = 8;
     ctx.fillStyle = col + 'cc';
     ctx.beginPath();
     ctx.moveTo(fx1 + hl * Math.cos(headAng), fy1 + hl * Math.sin(headAng));
     ctx.lineTo(fx1 + hw * Math.cos(headAng + 1.7), fy1 + hw * Math.sin(headAng + 1.7));
     ctx.lineTo(fx1 + hw * Math.cos(headAng - 1.7), fy1 + hw * Math.sin(headAng - 1.7));
     ctx.closePath(); ctx.fill();
-
-    // 「N」「S」ラベル（矢印根元 = エアギャップ外端）
     const nLabel = isSrc ? 'N' : 'S';
     const labelR = mR * 0.82;
     ctx.fillStyle = isSrc ? 'rgba(230,80,60,0.9)' : 'rgba(60,80,220,0.9)';
     ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(nLabel, mX + labelR * Math.cos(fluxRad), mY + labelR * Math.sin(fluxRad));
-
-    // コイル生成磁界の説明ラベル（外側に小さく）
     const descR = mR * 0.95;
     ctx.fillStyle = col + 'aa'; ctx.font = '8px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -931,17 +939,22 @@ function drawCircuit() {
   ctx.fillStyle = 'rgba(100,180,255,0.5)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('MCU', gdBoxX + gdBoxW / 2, gdBoxTop - 7);
 
-  // 各相のMOSFET + 配線
+  // 各相のMOSFET + 縦配線
   ['U', 'V', 'W'].forEach((ph, pi) => {
     const cx = phX[pi], col = PC[ph];
     const hs = getMosState(ph, true, si, pwm), ls = getMosState(ph, false, si, pwm);
     const aH = hs === 'on' || hs === 'pwm' || hs === 'bd', aL = ls === 'on' || ls === 'bd';
+    const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
+    const nodeActive = isSrc || isDst;
 
-    // 縦配線
+    // 各相の中間ノードY（縦方向にずらして3本を区別する）
+    const wireY = coilY + (pi - 1) * 14; // U:-14, V:0, W:+14
+
+    // 縦配線（VbusからHS MOS上端、LSから GNDまで）
     wl(cx, Vy, cx, mhY, aH ? col : OW, aH ? 1.5 : 0.5);
     drawMOS(cx, true, hs, col);
-    wl(cx, mhY + mhH, cx, coilY - 8, (aH || aL) ? col : OW, (aH || aL) ? 1.5 : 0.5);
-    wl(cx, coilY + 8, cx, mlY, aL ? col : OW, aL ? 1.5 : 0.5);
+    wl(cx, mhY + mhH, cx, wireY, (aH || aL) ? col : OW, (aH || aL) ? 1.5 : 0.5);
+    wl(cx, wireY, cx, mlY, aL ? col : OW, aL ? 1.5 : 0.5);
     drawMOS(cx, false, ls, col);
     wl(cx, mlY + mlH, cx, Gy, aL ? col : OW, aL ? 1.5 : 0.5);
 
@@ -949,98 +962,81 @@ function drawCircuit() {
     ctx.fillStyle = col; ctx.font = 'bold 10px JetBrains Mono,monospace'; ctx.textAlign = 'center';
     ctx.fillText(ph, cx, mhY - 7);
 
-    // ノード点（中点 = コイル接続点）を強調
-    const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
-    const nodeActive = isSrc || isDst;
-    ctx.fillStyle = nodeActive ? col : (isMon ? col + '88' : 'rgba(255,255,255,0.15)');
-    ctx.beginPath(); ctx.arc(cx, coilY, nodeActive ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+    // 中間ノード点
+    ctx.fillStyle = nodeActive ? col : (isMon ? col + '88' : 'rgba(255,255,255,0.18)');
+    ctx.beginPath(); ctx.arc(cx, wireY, nodeActive ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // 右端への引き出し配線（インバータ出力 → モータ端子）
+    const wireCol = nodeActive ? col : (isMon ? col + 'bb' : col + '33');
+    const wireW = nodeActive ? 2 : (isMon ? 1 : 0.5);
+    ctx.strokeStyle = wireCol; ctx.lineWidth = wireW; ctx.setLineDash(nodeActive ? [] : [3, 3]); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx, wireY); ctx.lineTo(W - 2, wireY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 電流方向矢印（src/dst相）
+    if (nodeActive) {
+      const arMid = cx + (W - 2 - cx) * 0.55;
+      const dir = isSrc ? 0 : Math.PI;
+      arrow(ctx, arMid, wireY, dir, col, 5);
+    }
+
+    // 端子ラベル（右端）
+    ctx.fillStyle = wireCol; ctx.font = (nodeActive ? 'bold ' : '') + '9px JetBrains Mono,monospace';
+    ctx.textAlign = 'end';
+    ctx.fillText(ph, W - 5, wireY - 3);
 
     // BEMF計測点ラベル（モニタ相のみ）
     if (isMon) {
-      ctx.strokeStyle = col + 'aa'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
-      ctx.beginPath(); ctx.moveTo(cx + (pi === 2 ? -1 : 1) * 20, coilY); ctx.lineTo(cx + (pi === 2 ? -1 : 1) * 44, coilY); ctx.stroke();
-      ctx.setLineDash([]);
-      const bx = cx + (pi === 2 ? -1 : 1) * 50;
-      ctx.fillStyle = col; ctx.font = 'bold 8px sans-serif';
-      ctx.textAlign = pi === 2 ? 'end' : 'start';
-      ctx.fillText('BEMF', bx, coilY - 3);
-      ctx.fillText('ADC', bx, coilY + 8);
-      // ADCコネクタ記号
-      ctx.strokeStyle = col + '88'; ctx.lineWidth = 0.8; ctx.setLineDash([]);
-      const bsX = pi === 2 ? bx + 2 : bx - 2, bsY = coilY - 1;
-      ctx.strokeRect(bsX + (pi === 2 ? 0 : -8), bsY + 3, 8, 9);
+      ctx.fillStyle = col; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'end';
+      ctx.fillText('BEMF/ADC', W - 5, wireY + 10);
     }
   });
 
-  // 主電流・BD電流描画（矢印ライン）
+  // 電流経路の矢印（MOSFETの縦配線部分）
   const sx = phX[['U', 'V', 'W'].indexOf(st.src)];
   const dx = phX[['U', 'V', 'W'].indexOf(st.dst)];
   const mx = phX[['U', 'V', 'W'].indexOf(st.mon)];
-
-  coilBumps(ctx, Math.min(sx, dx), Math.max(sx, dx), coilY, MAIN, 2);
-  ctx.fillStyle = MAIN; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(st.src + '→' + st.dst + ' コイル', (sx + dx) / 2, coilY - 12);
+  const srcWireY = coilY + (['U', 'V', 'W'].indexOf(st.src) - 1) * 14;
+  const dstWireY = coilY + (['U', 'V', 'W'].indexOf(st.dst) - 1) * 14;
 
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
   if (pwm === 'on') {
-    [[sx, Vy + 2, sx, mhY + mhH / 2], [sx, mhY + mhH, sx, coilY],
-     [dx, coilY, dx, mlY], [dx, mlY + mlH, dx, Gy - 2]
+    [[sx, Vy + 2, sx, mhY + mhH / 2], [sx, mhY + mhH, sx, srcWireY]
+    ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, MAIN));
+    [[dx, dstWireY, dx, mlY], [dx, mlY + mlH, dx, Gy - 2]
     ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, MAIN));
     arrow(ctx, sx, (Vy + mhY) / 2, Math.PI / 2, MAIN);
-    arrow(ctx, sx, (mhY + mhH + coilY) / 2, Math.PI / 2, MAIN);
-    arrow(ctx, dx, (coilY + mlY) / 2, Math.PI / 2, MAIN);
+    arrow(ctx, sx, (mhY + mhH + srcWireY) / 2, Math.PI / 2, MAIN);
+    arrow(ctx, dx, (dstWireY + mlY) / 2, Math.PI / 2, MAIN);
     arrow(ctx, dx, (mlY + mlH + Gy) / 2, Math.PI / 2, MAIN);
   } else if (pwm === 'off') {
-    [[sx, Gy - 2, sx, mlY + mlH], [sx, mlY, sx, coilY],
-     [dx, coilY, dx, mlY], [dx, mlY + mlH, dx, Gy - 2]
+    [[sx, Gy - 2, sx, mlY + mlH], [sx, mlY, sx, srcWireY]
+    ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, BD));
+    [[dx, dstWireY, dx, mlY], [dx, mlY + mlH, dx, Gy - 2]
     ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, BD));
     ctx.strokeStyle = BD; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
     ctx.beginPath(); ctx.moveTo(sx, Gy - 2); ctx.lineTo(dx, Gy - 2); ctx.stroke(); ctx.setLineDash([]);
     arrow(ctx, sx, mlY + mlH + 5, -Math.PI / 2, BD);
-    arrow(ctx, sx, (mlY + coilY) / 2, -Math.PI / 2, BD);
-    arrow(ctx, dx, (coilY + mlY) / 2, Math.PI / 2, BD);
+    arrow(ctx, sx, (mlY + srcWireY) / 2, -Math.PI / 2, BD);
+    arrow(ctx, dx, (dstWireY + mlY) / 2, Math.PI / 2, BD);
     arrow(ctx, dx, (mlY + mlH + Gy) / 2, Math.PI / 2, BD);
     arrow(ctx, (sx + dx) / 2 + (sx < dx ? 4 : -4), Gy - 2, sx < dx ? Math.PI : 0, BD, 5);
     ctx.fillStyle = BD; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('LS-BD 還流', (sx + dx) / 2, Gy + 12);
   } else {
-    [[sx, coilY, sx, mhY + mhH + 4], [mx, coilY, mx, mhY + mhH / 2], [mx, mhY, mx, Vy + 2]
+    const monWireY = coilY + (['U', 'V', 'W'].indexOf(st.mon) - 1) * 14;
+    [[sx, srcWireY, sx, mhY + mhH + 4], [mx, monWireY, mx, mhY + mhH / 2], [mx, mhY, mx, Vy + 2]
     ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, BD));
     ctx.strokeStyle = BD; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
     ctx.beginPath(); ctx.moveTo(mx, Vy + 2); ctx.lineTo(sx, Vy + 2); ctx.stroke(); ctx.setLineDash([]);
     arrow(ctx, mx, (mhY + Vy) / 2, -Math.PI / 2, BD);
     arrow(ctx, (mx + sx) / 2 + (mx > sx ? 4 : -4), Vy + 2, mx > sx ? Math.PI : 0, BD, 5);
-    dashedSeg(ctx, dx, coilY, dx, mlY, BD, 1.5);
+    dashedSeg(ctx, dx, dstWireY, dx, mlY, BD, 1.5);
     dashedSeg(ctx, dx, mlY + mlH, dx, Gy - 2, BD, 1.5);
     ctx.fillStyle = BD; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(st.mon + '_H BD 回生', (mx + sx) / 2, Vy - 6);
   }
-
-  // ---- 右端にUVW三相配線の引き出し端子 ----
-  // モータcanvasと接続することを示す「コネクタ矢印」
-  ['U', 'V', 'W'].forEach((ph, pi) => {
-    const cx = phX[pi], col = PC[ph];
-    const isSrc = ph === st.src, isDst = ph === st.dst;
-    const active = isSrc || isDst;
-    // 右端へ向かう水平線
-    ctx.strokeStyle = active ? col : col + '44';
-    ctx.lineWidth = active ? 2 : 0.8; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(cx, coilY); ctx.lineTo(W - 2, coilY); ctx.stroke();
-    // 矢印ヘッド（右端）
-    if (active) {
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.moveTo(W - 2, coilY);
-      ctx.lineTo(W - 8, coilY - 4);
-      ctx.lineTo(W - 8, coilY + 4);
-      ctx.closePath(); ctx.fill();
-    }
-    // 相ラベル（配線端）
-    ctx.fillStyle = active ? col : col + '66'; ctx.font = (active ? 'bold ' : '') + '9px JetBrains Mono,monospace';
-    ctx.textAlign = 'end';
-    ctx.fillText(ph, W - 10, coilY - 4);
-  });
 }
 
 /* ============================================================
