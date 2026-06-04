@@ -561,6 +561,57 @@ function drawMotor() {
     });
   });
 
+  // ---- 通電コイルの磁界ベクトル表示 ----
+  // 各相の磁極方向：コイル+スロットからロータ中心への方向
+  // +スロット角度がN極の向きになる（電流が内向きのスロット側）
+  const COIL_PLUS_ANG = { U: 90, V: 210, W: 330 }; // +スロットの機械角
+  ['U', 'V', 'W'].forEach(ph => {
+    const isSrc = ph === st.src, isDst = ph === st.dst;
+    if (!isSrc && !isDst) return; // 通電していない相はスキップ
+    const col = PC[ph];
+
+    // 磁極方向：+スロット側がN（電流内向き=src）か S（電流外向き=dst）かで向きが変わる
+    // srcの+スロット：電流が紙面奥（×）→右手則でロータ側にN極
+    // dstの+スロット：電流が紙面手前（●）→右手則でロータ側にS極
+    // → コイルが作る磁界のN極はsrcの+スロット方向を向く
+    const fluxAngMech = isSrc ? COIL_PLUS_ANG[ph] : (COIL_PLUS_ANG[ph] + 180) % 360;
+    const fluxRad = d2r(fluxAngMech);
+
+    // エアギャップ内側から中心に向かう矢印（N極がロータに入る方向）
+    const r0 = mR * 0.73; // エアギャップ外端
+    const r1 = mR * 0.62; // エアギャップ内端（ロータ表面付近）
+    const fx0 = mX + r0 * Math.cos(fluxRad), fy0 = mY + r0 * Math.sin(fluxRad);
+    const fx1 = mX + r1 * Math.cos(fluxRad), fy1 = mY + r1 * Math.sin(fluxRad);
+
+    // 矢印本体
+    ctx.strokeStyle = col + 'cc'; ctx.lineWidth = 2.5; ctx.setLineDash([]);
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(fx0, fy0); ctx.lineTo(fx1, fy1); ctx.stroke();
+
+    // 矢印ヘッド（r1 の先端）
+    const headAng = fluxRad; // 中心向き
+    const hw = 5, hl = 8;
+    ctx.fillStyle = col + 'cc';
+    ctx.beginPath();
+    ctx.moveTo(fx1 + hl * Math.cos(headAng), fy1 + hl * Math.sin(headAng));
+    ctx.lineTo(fx1 + hw * Math.cos(headAng + 1.7), fy1 + hw * Math.sin(headAng + 1.7));
+    ctx.lineTo(fx1 + hw * Math.cos(headAng - 1.7), fy1 + hw * Math.sin(headAng - 1.7));
+    ctx.closePath(); ctx.fill();
+
+    // 「N」「S」ラベル（矢印根元 = エアギャップ外端）
+    const nLabel = isSrc ? 'N' : 'S';
+    const labelR = mR * 0.82;
+    ctx.fillStyle = isSrc ? 'rgba(230,80,60,0.9)' : 'rgba(60,80,220,0.9)';
+    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(nLabel, mX + labelR * Math.cos(fluxRad), mY + labelR * Math.sin(fluxRad));
+
+    // コイル生成磁界の説明ラベル（外側に小さく）
+    const descR = mR * 0.95;
+    ctx.fillStyle = col + 'aa'; ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(ph + '相コイル磁界', mX + descR * Math.cos(fluxRad), mY + descR * Math.sin(fluxRad));
+  });
+
   // ロータ（4極・十字型）
   ctx.save();
   ctx.translate(mX, mY);
