@@ -16,8 +16,8 @@
   --bg3:     #1e2a3a;
   --border:  rgba(255,255,255,0.08);
   --text:    #e2e8f0;
-  --text2:   #94a3b8;
-  --text3:   #475569;
+  --text2:   #b8c9de;
+  --text3:   #6b84a0;
   --c-u:     #f97316;
   --c-v:     #38bdf8;
   --c-w:     #4ade80;
@@ -466,12 +466,12 @@ function drawMotor() {
     ctx.lineTo(mX + r2 * Math.cos(rad), mY + r2 * Math.sin(rad)); ctx.stroke();
     if (maj) {
       const lr = mR + 28;
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '7px JetBrains Mono,monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = '7px JetBrains Mono,monospace';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(d + '°', mX + lr * Math.cos(rad), mY + lr * Math.sin(rad));
     }
   }
-  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '8px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.70)'; ctx.font = '8px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.fillText('機械角（電気角 = ×2）', mX, mY - mR - 40);
 
@@ -536,7 +536,7 @@ function drawMotor() {
   ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('N', neutX, neutY - 0.5);
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '7px sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.80)'; ctx.font = '7px sans-serif'; ctx.textBaseline = 'top';
   ctx.fillText('中性点', neutX, neutY + 9);
   ctx.textBaseline = 'alphabetic';
 
@@ -637,7 +637,7 @@ function drawMotor() {
   // ---- 7. ロータ（4極）----
   ctx.save();
   ctx.translate(mX, mY);
-  ctx.rotate(mDeg * Math.PI / 180);
+  ctx.rotate((mDeg - 90) * Math.PI / 180);
 
   const rr = mR * 0.60;
   ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2);
@@ -681,7 +681,7 @@ function drawMotor() {
   ctx.lineTo(atx + 5 * Math.cos(arDir + 2.4), aty + 5 * Math.sin(arDir + 2.4));
   ctx.lineTo(atx + 5 * Math.cos(arDir - 2.4), aty + 5 * Math.sin(arDir - 2.4));
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.70)'; ctx.font = '8px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('回転', mX, mY);
 
@@ -733,7 +733,7 @@ function drawMotor() {
   });
 
   // ---- 11. 情報テキスト ----
-  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('機械角 ' + mDeg.toFixed(1) + '°　電気角 ' + elDeg() + '°', mX, mY + mR + 48);
   ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 10px sans-serif';
   ctx.fillText('S' + (si + 1) + '  ' + st.src + '→' + st.dst + ' 通電  |  ' + st.mon + '相 BEMF監視', mX, mY + mR + 62);
@@ -762,7 +762,7 @@ function drawBEMF() {
     ctx.beginPath(); ctx.moveTo(lx, PAD.t); ctx.lineTo(lx, H-PAD.b); ctx.stroke();
     if (s < 6) {
       const isCur = s === si;
-      ctx.fillStyle = isCur ? '#fbbf24' : 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = isCur ? '#fbbf24' : 'rgba(255,255,255,0.55)';
       ctx.font = (isCur ? 'bold ' : '') + '9px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('S'+(s+1), lx+pw/12, H-PAD.b+14);
     }
@@ -771,7 +771,7 @@ function drawBEMF() {
   // 零線
   ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 0.5; ctx.setLineDash([]);
   ctx.beginPath(); ctx.moveTo(PAD.l, mY); ctx.lineTo(W-PAD.r, mY); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px JetBrains Mono,monospace'; ctx.textAlign = 'end';
+  ctx.fillStyle = 'rgba(255,255,255,0.80)'; ctx.font = '8px JetBrains Mono,monospace'; ctx.textAlign = 'end';
   ctx.fillText('+1', PAD.l-3, mY-amp+4);
   ctx.fillText('0', PAD.l-3, mY+4);
   ctx.fillText('-1', PAD.l-3, mY+amp+4);
@@ -894,7 +894,7 @@ function drawBEMF() {
   });
 
   for (let d = 0; d <= 360; d += 60) {
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.70)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(d+'°', PAD.l+(d/360)*pw, H-PAD.b+14);
   }
 }
@@ -924,7 +924,7 @@ function drawCircuit() {
   ctx.fillText('Vbus (+)', 18, Vy - 6);
   ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(14, Gy); ctx.lineTo(W - 6, Gy); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '10px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = '10px sans-serif';
   ctx.fillText('GND', 18, Gy + 13);
 
   function wl(x1, y1, x2, y2, col, lw) {
@@ -1130,7 +1130,7 @@ function drawGate() {
   ctx.beginPath(); ctx.moveTo(schPadL + 10, Gy); ctx.lineTo(schPadL + 78, Gy); ctx.stroke();
   ctx.fillStyle = '#d97706'; ctx.font = '7px sans-serif'; ctx.textAlign = 'start';
   ctx.fillText('Vbus', schPadL + 10, Vy - 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('GND', schPadL + 10, Gy + 9);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillText('GND', schPadL + 10, Gy + 9);
 
   const PHASES = ['U', 'V', 'W'];
   PHASES.forEach((ph, pi) => {
@@ -1194,7 +1194,7 @@ function drawGate() {
     ctx.beginPath(); ctx.moveTo(lx, PAD.t); ctx.lineTo(lx, H - PAD.b); ctx.stroke();
     if (s < 6) {
       const isCur = s === si;
-      ctx.fillStyle = isCur ? '#fbbf24' : 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = isCur ? '#fbbf24' : 'rgba(255,255,255,0.55)';
       ctx.font = (isCur ? 'bold ' : '') + '7px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('S' + (s + 1), lx + pw / 12, H - 1);
     }
@@ -1271,7 +1271,7 @@ function drawGate() {
         ctx.beginPath(); ctx.moveTo(fx, loY); ctx.lineTo(fx + fw, loY); ctx.stroke();
         ctx.setLineDash([]);
         if (isCur) {
-          ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
           ctx.fillText('OFF', fx + fw / 2, by + 1);
         }
       }
