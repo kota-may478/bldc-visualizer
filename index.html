@@ -313,23 +313,24 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
 /* ============================================================
    MOTOR PHYSICS
    4極(2極対): 電気角 = 機械角 × 2
-   BEMFオフセット: U=90, V=330, W=210
-   → N極が+スロット正対時にBEMF=+1(フラット頂点): el=BO+90=180,60,300 → 機械角90°,30°,150°
+   座標系: 0°=12時(上), CW増加（工学標準）
+   BEMFオフセット: U=330, V=90, W=210
+   → N極が+スロット正対時にBEMF=+1(フラット頂点)
    → 各ステップ中盤(el[0]+30°)でtrap(el-offset)=0 (ZC) ✓
-   → 全ステップ中盤でトルク T∝2I > 0 ✓
-   コイル正スロット(機械角): U=90°, V=210°, W=330°（120°等間隔）
+   → 全ステップ中盤でトルク T∝2I > 0 (CW方向) ✓
+   コイル正スロット(機械角,CW系): U=0°, V=120°, W=240°
    ============================================================ */
 const POLE_PAIRS = 2;
 const PC = { U:'#f97316', V:'#38bdf8', W:'#4ade80' };
-const BO = { U:90, V:330, W:210 };
+const BO = { U:330, V:90, W:210 };
 
 const STEPS = [
-  { el:[0,60],   src:'V', dst:'U', mon:'W', uh:0,ul:1, vh:1,vl:0, wh:0,wl:0 },
-  { el:[60,120], src:'V', dst:'W', mon:'U', uh:0,ul:0, vh:1,vl:0, wh:0,wl:1 },
-  { el:[120,180],src:'U', dst:'W', mon:'V', uh:1,ul:0, vh:0,vl:0, wh:0,wl:1 },
-  { el:[180,240],src:'U', dst:'V', mon:'W', uh:1,ul:0, vh:0,vl:1, wh:0,wl:0 },
-  { el:[240,300],src:'W', dst:'V', mon:'U', uh:0,ul:0, vh:0,vl:1, wh:1,wl:0 },
-  { el:[300,360],src:'W', dst:'U', mon:'V', uh:0,ul:1, vh:0,vl:0, wh:1,wl:0 },
+  { el:[0,60],   src:'U', dst:'V', mon:'W', uh:1,ul:0, vh:0,vl:1, wh:0,wl:0 },
+  { el:[60,120], src:'U', dst:'W', mon:'V', uh:1,ul:0, vh:0,vl:0, wh:0,wl:1 },
+  { el:[120,180],src:'V', dst:'W', mon:'U', uh:0,ul:0, vh:1,vl:0, wh:0,wl:1 },
+  { el:[180,240],src:'V', dst:'U', mon:'W', uh:0,ul:1, vh:1,vl:0, wh:0,wl:0 },
+  { el:[240,300],src:'W', dst:'U', mon:'V', uh:0,ul:1, vh:0,vl:0, wh:1,wl:0 },
+  { el:[300,360],src:'W', dst:'V', mon:'U', uh:0,ul:0, vh:0,vl:1, wh:1,wl:0 },
 ];
 
 function trap(a) {
@@ -343,8 +344,10 @@ function trap(a) {
 }
 function bemf(ph, el) { return trap(el - BO[ph]); }
 
-// 機械角 → canvas radian（0°=3時、反時計正 → canvas時計正変換）
-function d2r(deg) { return (90 - deg) * Math.PI / 180; }
+// 機械角 → canvas radian
+// 座標系: 0°=12時(上)、CW増加（工学標準：時計回り正）
+// d2r(0°) = -PI/2(上), d2r(90°) = 0(右), d2r(180°) = PI/2(下)
+function d2r(deg) { return (deg - 90) * Math.PI / 180; }
 
 function getMosState(ph, isH, si, pwm) {
   const st = STEPS[si];
@@ -441,9 +444,9 @@ function drawMotor() {
   const mDeg = mechDeg();
 
   // スロット定義
-  const COIL_PLUS_ANG  = { U: 90, V: 210, W: 330 }; // +スロット機械角
-  const COIL_MINUS_ANG = { U: 270, V: 30,  W: 150 }; // −スロット機械角
-  const COIL_ALL = { U: [[90, '+'], [270, '-']], V: [[210, '+'], [30, '-']], W: [[330, '+'], [150, '-']] };
+  const COIL_PLUS_ANG  = { U: 0, V: 120, W: 240 }; // +スロット機械角(CW系: 0°=12時)
+  const COIL_MINUS_ANG = { U: 180, V: 300, W: 60 };  // −スロット機械角
+  const COIL_ALL = { U: [[0, '+'], [180, '-']], V: [[120, '+'], [300, '-']], W: [[240, '+'], [60, '-']] };
 
   // 中性点座標：ロータより外側・ステータ内壁の内側（エアギャップ内）
   // 3本線の収束先として使いやすい位置にする
@@ -639,7 +642,7 @@ function drawMotor() {
   // ---- 7. ロータ（4極）----
   ctx.save();
   ctx.translate(mX, mY);
-  ctx.rotate((180 - mDeg) * Math.PI / 180);
+  ctx.rotate(mDeg * Math.PI / 180);
 
   const rr = mR * 0.60;
   ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2);
@@ -669,13 +672,14 @@ function drawMotor() {
   ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 4]);
   ctx.beginPath(); ctx.arc(mX, mY, mR * 0.72, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
 
-  // ---- 9. 回転方向矢印（ロータ外、固定座標）----
+  // ---- 9. 回転方向矢印（CW：時計回り）----
   const arR2 = mR * 0.25;
   ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(mX, mY, arR2, -2.4, -0.7); ctx.stroke();
-  const arTipAng = -0.7;
+  // CW = canvas角度増加方向: 0.7 → 2.4
+  ctx.beginPath(); ctx.arc(mX, mY, arR2, 0.7, 2.4); ctx.stroke();
+  const arTipAng = 2.4;
   const atx = mX + arR2 * Math.cos(arTipAng), aty = mY + arR2 * Math.sin(arTipAng);
-  // 矢印ヘッドは円弧の接線方向（arTipAng+π/2）
+  // 矢印ヘッドは円弧の接線方向（CW: arTipAng+π/2）
   const arDir = arTipAng + Math.PI / 2;
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.beginPath();
@@ -685,7 +689,7 @@ function drawMotor() {
   ctx.closePath(); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.70)'; ctx.font = '8px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('回転', mX, mY);
+  ctx.fillText('CW回転', mX, mY);
 
   // ---- 10. 端子配線（左端 → 各相+スロット）----
   const circuitH = document.getElementById('circuit-canvas').clientHeight || H;
@@ -1298,51 +1302,51 @@ function drawGate() {
    ============================================================ */
 const STEP_EXPLS = [
   {
-    title:'S1（電気角 0°〜60°）', conduction:'V→U 通電', monitor:'W相 BEMF監視',
+    title:'S1（電気角 0°〜60°）', conduction:'U→V 通電', monitor:'W相 BEMF監視',
     phaseDesc: {
-      V: bv => `src側（HS PWM）。2ndN極がV+スロット(210°)へ近づき正対→Φ_V増加→BEMF_V≈+1の平坦部へ(${bv})。`,
-      U: bv => `dst側（LS ON）。S極がU+スロット(90°)に正対→Φ_U負最大→BEMF_U≈−1の平坦部(${bv})。`,
-      W: bv => `Hi-Z（フロート）。W相BEMF下向き斜面中(${bv})。S1中盤(el=30°, 機械角15°)でZC（下向き）→S2への転流トリガー。`,
+      U: bv => `src側（HS PWM）。N極がU+スロット(0°=12時)へ近づく途中→Φ_U増加→BEMF上昇中(${bv})。S1中盤(el=30°)でBEMF_U=+1フラット頂点に向かう。`,
+      V: bv => `dst側（LS ON）。S極がV+スロット(120°)付近→Φ_V負最大方向→BEMF_V≈−1の平坦部(${bv})。`,
+      W: bv => `Hi-Z（フロート）。S1開始(el=0°)でW相BEMFが下向きZC済み。S1中盤(el=30°, 機械角15°)でZC検出→S2への転流タイミング計算開始(${bv})。`,
     }
   },
   {
-    title:'S2（電気角 60°〜120°）', conduction:'V→W 通電', monitor:'U相 BEMF監視',
+    title:'S2（電気角 60°〜120°）', conduction:'U→W 通電', monitor:'V相 BEMF監視',
     phaseDesc: {
-      V: bv => `src側（HS PWM）。2ndN極がV+スロット(210°)に正対中→Φ_V最大→BEMF_V≈+1の平坦部(${bv})。`,
-      W: bv => `dst側（LS ON）。S極がW+スロット(330°)に近づく→Φ_W負方向へ増加→BEMF_W≈−1平坦部へ(${bv})。`,
-      U: bv => `Hi-Z（フロート）。N極がU+スロット(90°)へ近づく→Φ_U増加→上向きBEMF斜面(${bv})。S2中盤(el=90°, 機械角45°)でZC（上向き）→S3への転流トリガー。`,
+      U: bv => `src側（HS PWM）。N極がU+スロット(0°)に正対→Φ_U最大→BEMF_U≈+1の平坦部(${bv})。`,
+      W: bv => `dst側（LS ON）。S極がW+スロット(240°)付近→Φ_W負方向→BEMF_W≈−1の平坦部へ(${bv})。`,
+      V: bv => `Hi-Z（フロート）。N極がV+スロット(120°)を通過後→Φ_V減少→下向きBEMF斜面(${bv})。S2中盤(el=90°, 機械角45°)で上向きZC→S3への転流タイミング(${bv})。`,
     }
   },
   {
-    title:'S3（電気角 120°〜180°）', conduction:'U→W 通電', monitor:'V相 BEMF監視',
+    title:'S3（電気角 120°〜180°）', conduction:'V→W 通電', monitor:'U相 BEMF監視',
     phaseDesc: {
-      U: bv => `src側（HS PWM）。N極がU+スロット(90°)へ近づき正対→Φ_U増加→BEMF_U≈+1の平坦部へ(${bv})。`,
-      W: bv => `dst側（LS ON）。S極がW+スロット(330°)に正対→Φ_W負最大→BEMF_W≈−1の平坦部(${bv})。`,
-      V: bv => `Hi-Z（フロート）。V相BEMF下向き斜面中(${bv})。S3中盤(el=150°, 機械角75°)でZC（下向き）→S4への転流トリガー。`,
+      V: bv => `src側（HS PWM）。N極がV+スロット(120°)へ近づき正対→Φ_V増加→BEMF_V≈+1の平坦部へ(${bv})。`,
+      W: bv => `dst側（LS ON）。S極がW+スロット(240°)に正対→Φ_W負最大→BEMF_W≈−1の平坦部(${bv})。`,
+      U: bv => `Hi-Z（フロート）。N極がU+スロット(0°)を通過後→Φ_U減少→下向きBEMF斜面(${bv})。S3中盤(el=150°, 機械角75°)で下向きZC→S4への転流タイミング。`,
     }
   },
   {
-    title:'S4（電気角 180°〜240°）', conduction:'U→V 通電', monitor:'W相 BEMF監視',
+    title:'S4（電気角 180°〜240°）', conduction:'V→U 通電', monitor:'W相 BEMF監視',
     phaseDesc: {
-      U: bv => `src側（HS PWM）。N極がU+スロット(90°)に正対中→Φ_U最大→BEMF_U≈+1の平坦部(${bv})。`,
-      V: bv => `dst側（LS ON）。S極がV+スロット(210°)に近づく→Φ_V負方向へ増加→BEMF_V≈−1平坦部へ(${bv})。`,
-      W: bv => `Hi-Z（フロート）。W相BEMF上向き斜面中(${bv})。S4中盤(el=210°, 機械角105°)でZC（上向き）→S5への転流トリガー。`,
+      V: bv => `src側（HS PWM）。N極がV+スロット(120°)に正対中→Φ_V最大→BEMF_V≈+1の平坦部(${bv})。`,
+      U: bv => `dst側（LS ON）。S極がU+スロット(0°)付近→Φ_U負方向→BEMF_U≈−1の平坦部へ(${bv})。`,
+      W: bv => `Hi-Z（フロート）。N極がW+スロット(240°)へ近づく→Φ_W増加→上向きBEMF斜面(${bv})。S4中盤(el=210°, 機械角105°)で上向きZC→S5への転流タイミング。`,
     }
   },
   {
-    title:'S5（電気角 240°〜300°）', conduction:'W→V 通電', monitor:'U相 BEMF監視',
+    title:'S5（電気角 240°〜300°）', conduction:'W→U 通電', monitor:'V相 BEMF監視',
     phaseDesc: {
-      W: bv => `src側（HS PWM）。2ndN極がW+スロット(330°)へ近づき正対→Φ_W増加→BEMF_W≈+1の平坦部へ(${bv})。`,
-      V: bv => `dst側（LS ON）。S極がV+スロット(210°)に正対→Φ_V負最大→BEMF_V≈−1の平坦部(${bv})。`,
-      U: bv => `Hi-Z（フロート）。U相BEMF下向き斜面中(${bv})。S5中盤(el=270°, 機械角135°)でZC（下向き）→S6への転流トリガー。`,
+      W: bv => `src側（HS PWM）。N極がW+スロット(240°)へ近づき正対→Φ_W増加→BEMF_W≈+1の平坦部へ(${bv})。`,
+      U: bv => `dst側（LS ON）。S極がU+スロット(0°)に正対→Φ_U負最大→BEMF_U≈−1の平坦部(${bv})。`,
+      V: bv => `Hi-Z（フロート）。N極がV+スロット(120°)を通過後→Φ_V減少→下向きBEMF斜面(${bv})。S5中盤(el=270°, 機械角135°)で下向きZC→S6への転流タイミング。`,
     }
   },
   {
-    title:'S6（電気角 300°〜360°）', conduction:'W→U 通電', monitor:'V相 BEMF監視',
+    title:'S6（電気角 300°〜360°）', conduction:'W→V 通電', monitor:'U相 BEMF監視',
     phaseDesc: {
-      W: bv => `src側（HS PWM）。2ndN極がW+スロット(330°)に正対中→Φ_W最大→BEMF_W≈+1の平坦部(${bv})。`,
-      U: bv => `dst側（LS ON）。S極がU+スロット(90°)に近づく→Φ_U負方向へ増加→BEMF_U≈−1平坦部へ(${bv})。`,
-      V: bv => `Hi-Z（フロート）。V相BEMF上向き斜面中(${bv})。S6中盤(el=330°, 機械角165°)でZC（上向き）→S1への転流トリガー。`,
+      W: bv => `src側（HS PWM）。N極がW+スロット(240°)に正対中→Φ_W最大→BEMF_W≈+1の平坦部(${bv})。`,
+      V: bv => `dst側（LS ON）。S極がV+スロット(120°)付近→Φ_V負方向→BEMF_V≈−1の平坦部へ(${bv})。`,
+      U: bv => `Hi-Z（フロート）。N極がU+スロット(0°)へ近づく→Φ_U増加→上向きBEMF斜面(${bv})。S6中盤(el=330°, 機械角165°)で上向きZC→S1への転流タイミング。`,
     }
   },
 ];
