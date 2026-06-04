@@ -144,7 +144,7 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
   overflow: hidden;
   position: relative;
 }
-.circuit-motor-panel canvas { display: block; }
+.circuit-motor-panel canvas { display: block; flex-shrink: 0; }
 
 /* Canvas panels */
 .panel {
@@ -280,8 +280,8 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
     <div>
       <div class="circuit-motor-panel">
         <div class="panel-label" style="position:absolute;top:3px;left:6px;z-index:1">三相インバータ ＋ BLDCモータ接続図</div>
-        <canvas id="circuit-canvas" height="310" style="flex:1.1"></canvas>
-        <canvas id="motor-canvas" height="310" style="flex:1"></canvas>
+        <canvas id="circuit-canvas" height="310" style="width:55%;min-width:0"></canvas>
+        <canvas id="motor-canvas" height="310" style="width:45%;min-width:0"></canvas>
       </div>
     </div>
     <div id="expl-panel"></div>
@@ -1177,11 +1177,6 @@ function drawGate() {
   const curX = PAD.l + (si / 6) * pw + pw / 12;
   ctx.strokeStyle = 'rgba(251,191,36,0.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.moveTo(curX, PAD.t); ctx.lineTo(curX, H - PAD.b); ctx.stroke(); ctx.setLineDash([]);
-}
-
-  const curX=PAD.l+(si/6)*pw+pw/12;
-  ctx.strokeStyle='rgba(251,191,36,0.6)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
-  ctx.beginPath(); ctx.moveTo(curX,PAD.t); ctx.lineTo(curX,H-PAD.b); ctx.stroke(); ctx.setLineDash([]);
 }
 
 /* ============================================================
