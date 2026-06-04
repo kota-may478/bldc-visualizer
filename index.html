@@ -112,16 +112,39 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
 /* Main grid */
 #main {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px;
 }
-@media (max-width: 900px) {
-  #main { grid-template-columns: 1fr; }
+.top-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 8px;
 }
-.left-col  { display: flex; flex-direction: column; gap: 8px; padding-right: 8px; border-right: 1px solid var(--border); }
-.right-col { display: flex; flex-direction: column; gap: 8px; padding-left: 8px; }
+@media (max-width: 900px) {
+  .top-row { grid-template-columns: 1fr; }
+}
+.bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .bottom-row { grid-template-columns: 1fr; }
+}
+/* circuit+motor combined panel */
+.circuit-motor-panel {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+.circuit-motor-panel canvas { display: block; }
 
 /* Canvas panels */
 .panel {
@@ -252,26 +275,27 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
 
 <!-- Main -->
 <div id="main">
-  <div class="left-col">
-    <div class="panel">
-      <div class="panel-label">ロータ断面図（4極 / 2極対）</div>
-      <canvas id="motor-canvas" height="280"></canvas>
+  <!-- 上段: 回路図+モータ断面（横並び・配線接続）、右に説明 -->
+  <div class="top-row">
+    <div>
+      <div class="circuit-motor-panel">
+        <div class="panel-label" style="position:absolute;top:3px;left:6px;z-index:1">三相インバータ ＋ BLDCモータ接続図</div>
+        <canvas id="circuit-canvas" height="310" style="flex:1.1"></canvas>
+        <canvas id="motor-canvas" height="310" style="flex:1"></canvas>
+      </div>
     </div>
-    <div class="panel">
-      <div class="panel-label">三相インバータ回路図</div>
-      <canvas id="circuit-canvas" height="210"></canvas>
-    </div>
+    <div id="expl-panel"></div>
   </div>
-  <div class="right-col">
+  <!-- 下段: BEMF波形、ゲート信号 -->
+  <div class="bottom-row">
     <div class="panel">
       <div class="panel-label">BEMF波形（ZC検出 → +30° → 転流）</div>
       <canvas id="bemf-canvas" height="170"></canvas>
     </div>
     <div class="panel">
-      <div class="panel-label">ゲート信号（1電気周期）</div>
-      <canvas id="gate-canvas" height="100"></canvas>
+      <div class="panel-label">ゲート信号（各MOSFETへの入力）</div>
+      <canvas id="gate-canvas" height="170"></canvas>
     </div>
-    <div id="expl-panel"></div>
   </div>
 </div>
 
@@ -402,15 +426,72 @@ function dashedSeg(ctx, x1, y1, x2, y2, col, lw) {
 
 /* ============================================================
    DRAW MOTOR CANVAS
+   左端からUVW配線が来てステータコイルスロットへ接続される
    ============================================================ */
 function drawMotor() {
   const { ctx, W, H } = setupCanvas('motor-canvas');
   ctx.clearRect(0, 0, W, H);
 
-  const mX = W / 2, mY = H / 2;
-  const mR = Math.min(W, H) * 0.33;
+  const mX = W / 2 + 12, mY = H / 2;
+  const mR = Math.min(W - 30, H) * 0.33;
   const st = STEPS[si];
   const mDeg = mechDeg();
+
+  // --- 左端からの三相配線引き込み ---
+  // コイルスロット接続点（ステータ外周上）に向けた配線
+  const COIL_MECH = { U: [90, 270], V: [210, 30], W: [330, 150] };
+  // 各相の「+スロット」への接続ラインを左端から引く
+  ['U', 'V', 'W'].forEach(ph => {
+    const col = PC[ph];
+    const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
+    const active = isSrc || isDst;
+
+    // +スロット（電流の入り口）の機械角
+    const plusAng = COIL_MECH[ph][0];
+    const rad = d2r(plusAng);
+    const slotX = mX + (mR + 2) * Math.cos(rad);
+    const slotY = mY + (mR + 2) * Math.sin(rad);
+
+    // 左端の接続点 Y（スロットYに合わせる）
+    const wireX0 = 0;
+    const wireY0 = slotY;
+
+    // 配線ライン（左端 → スロット手前）
+    ctx.strokeStyle = active ? col : (isMon ? col + '88' : col + '33');
+    ctx.lineWidth = active ? 2 : (isMon ? 1 : 0.5);
+    ctx.setLineDash(active ? [] : [3, 3]);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(wireX0, wireY0);
+    // L字で接続（左端→スロット付近）
+    ctx.lineTo(slotX - 6, wireY0);
+    ctx.lineTo(slotX - 6, slotY);
+    ctx.lineTo(slotX, slotY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 左端コネクタ端子
+    ctx.fillStyle = active ? col : (isMon ? col + 'aa' : col + '44');
+    ctx.beginPath(); ctx.arc(wireX0 + 3, wireY0, 3, 0, Math.PI * 2); ctx.fill();
+    // 相ラベル
+    ctx.fillStyle = active ? col : (isMon ? col + 'cc' : col + '55');
+    ctx.font = (active ? 'bold ' : '') + '9px JetBrains Mono,monospace';
+    ctx.textAlign = 'start'; ctx.textBaseline = 'bottom';
+    ctx.fillText(ph, wireX0 + 7, wireY0 - 1);
+    ctx.textBaseline = 'alphabetic';
+
+    // 電流方向矢印（アクティブ相のみ）
+    if (active) {
+      const arX = (wireX0 + slotX) / 2 - 10, arY = wireY0;
+      const dir = isSrc ? 0 : Math.PI; // src: →方向, dst: ←方向
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(arX + 6 * Math.cos(dir), arY + 6 * Math.sin(dir));
+      ctx.lineTo(arX + 6 * Math.cos(dir + 2.3), arY + 6 * Math.sin(dir + 2.3));
+      ctx.lineTo(arX + 6 * Math.cos(dir - 2.3), arY + 6 * Math.sin(dir - 2.3));
+      ctx.closePath(); ctx.fill();
+    }
+  });
 
   // ステータ外枠（オレンジリング）
   ctx.beginPath(); ctx.arc(mX, mY, mR + 20, 0, Math.PI * 2);
@@ -443,8 +524,8 @@ function drawMotor() {
   ctx.fillText('機械角（電気角 = ×2）', mX, mY - mR - 42);
 
   // コイルスロット（ステータ固定）
-  const COIL_ALL = { U:[[90,'+'],[270,'-']], V:[[210,'+'],[30,'-']], W:[[330,'+'],[150,'-']] };
-  ['U','V','W'].forEach(ph => {
+  const COIL_ALL = { U: [[90, '+'], [270, '-']], V: [[210, '+'], [30, '-']], W: [[330, '+'], [150, '-']] };
+  ['U', 'V', 'W'].forEach(ph => {
     const col = PC[ph];
     const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
     COIL_ALL[ph].forEach(([ang, sign]) => {
@@ -466,8 +547,8 @@ function drawMotor() {
         if (dot) {
           ctx.beginPath(); ctx.arc(0, -sh / 2, 2.5, 0, Math.PI * 2); ctx.fill();
         } else {
-          ctx.beginPath(); ctx.moveTo(-3, -sh/2-3); ctx.lineTo(3, -sh/2+3); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(3, -sh/2-3); ctx.lineTo(-3, -sh/2+3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(-3, -sh / 2 - 3); ctx.lineTo(3, -sh / 2 + 3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(3, -sh / 2 - 3); ctx.lineTo(-3, -sh / 2 + 3); ctx.stroke();
         }
       }
       ctx.restore();
@@ -483,14 +564,13 @@ function drawMotor() {
   // ロータ（4極・十字型）
   ctx.save();
   ctx.translate(mX, mY);
-  ctx.rotate(mDeg * Math.PI / 180); // 時計回りを正転
+  ctx.rotate(mDeg * Math.PI / 180);
 
   const rr = mR * 0.60;
   ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2);
   ctx.fillStyle = '#0d1b2a'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 0.5; ctx.stroke();
 
-  // N-S-N-S 4極
   const poles = [
     { s: -45, e: 45,   t: 'N' },
     { s:  45, e: 135,  t: 'S' },
@@ -510,8 +590,7 @@ function drawMotor() {
     ctx.fillText(p.t, rr * 0.58 * Math.cos(mid), rr * 0.58 * Math.sin(mid));
   });
 
-  // N極矢印（ローカル上方向）
-  ctx.strokeStyle = 'rgba(255,180,160,0.7)'; ctx.lineWidth = 2; ctx.setLineDash([3,3]);
+  ctx.strokeStyle = 'rgba(255,180,160,0.7)'; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.moveTo(0, rr * 0.1); ctx.lineTo(0, -rr * 0.88); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = 'rgba(255,180,160,0.7)';
@@ -520,7 +599,7 @@ function drawMotor() {
   ctx.restore();
 
   // エアギャップ
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5; ctx.setLineDash([2,4]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 4]);
   ctx.beginPath(); ctx.arc(mX, mY, mR * 0.72, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
 
   // 回転方向矢印
@@ -538,7 +617,7 @@ function drawMotor() {
   ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px Noto Sans JP,sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('機械角 ' + mDeg.toFixed(1) + '°　電気角 ' + elDeg() + '°', mX, mY + mR + 50);
   ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 10px Noto Sans JP,sans-serif';
-  ctx.fillText('S' + (si+1) + '  ' + st.src + '→' + st.dst + ' 通電  |  ' + st.mon + '相 BEMF監視', mX, mY + mR + 64);
+  ctx.fillText('S' + (si + 1) + '  ' + st.src + '→' + st.dst + ' 通電  |  ' + st.mon + '相 BEMF監視', mX, mY + mR + 64);
 }
 
 /* ============================================================
@@ -548,7 +627,7 @@ function drawBEMF() {
   const { ctx, W, H } = setupCanvas('bemf-canvas');
   ctx.clearRect(0, 0, W, H);
   const st = STEPS[si];
-  const PAD = { l:42, r:28, t:24, b:22 };
+  const PAD = { l:42, r:28, t:32, b:22 };
   const pw = W - PAD.l - PAD.r;
   const mY = PAD.t + (H - PAD.t - PAD.b) / 2;
   const amp = (H - PAD.t - PAD.b) * 0.37;
@@ -671,9 +750,12 @@ function drawBEMF() {
   }
 
   ctx.fillStyle = monCol; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'start';
-  ctx.fillText(st.mon+'相 BEMF監視中 (Hi-Z)', PAD.l+2, PAD.t+12);
+  ctx.fillText(st.mon + '相 BEMF監視中 (Hi-Z)', PAD.l + 2, PAD.t + 12);
+  // 計測点の説明
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px sans-serif';
+  ctx.fillText('計測点: ' + st.mon + '相インバータ出力ノード（HS/LSの中点）対GND', PAD.l + 2, PAD.t + 23);
   ctx.fillStyle = 'rgba(139,92,246,0.55)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'end';
-  ctx.fillText('トルク概念', W-PAD.r-2, PAD.t+12);
+  ctx.fillText('トルク概念', W - PAD.r - 2, PAD.t + 12);
 
   // カーソル
   const curX = PAD.l + (elDeg()/360)*pw;
@@ -700,204 +782,402 @@ function drawBEMF() {
 
 /* ============================================================
    DRAW CIRCUIT CANVAS
+   三相インバータ回路図（右端からUVW配線をモータcanvasへ引き出す）
    ============================================================ */
 function drawCircuit() {
   const { ctx, W, H } = setupCanvas('circuit-canvas');
   ctx.clearRect(0, 0, W, H);
   const st = STEPS[si];
-  const Vy = 22, Gy = H-22;
-  const phX = [W*0.20, W*0.50, W*0.80];
-  const mhY=Vy+26, mhH=28, mlH=28, mlY=Gy-54;
-  const ntY=mhY+mhH, nbY=mlY, coilY=(ntY+nbY)/2;
+
+  // --- レイアウト定数 ---
+  const Vy = 28, Gy = H - 28;
+  const phX = [W * 0.25, W * 0.50, W * 0.75];
+  const mhY = Vy + 30, mhH = 30, mlH = 30, mlY = Gy - 58;
+  const ntY = mhY + mhH, nbY = mlY;
+  const coilY = (ntY + nbY) / 2;
   const OW = 'rgba(255,255,255,0.10)';
   const MAIN = '#fbbf24', BD = '#a78bfa';
 
+  // Vbus / GND バス
   ctx.strokeStyle = 'rgba(200,110,20,0.55)'; ctx.lineWidth = 2; ctx.setLineDash([]);
-  ctx.beginPath(); ctx.moveTo(16,Vy); ctx.lineTo(W-16,Vy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(14, Vy); ctx.lineTo(W - 6, Vy); ctx.stroke();
   ctx.fillStyle = '#d97706'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'start';
-  ctx.fillText('Vbus (+)', 20, Vy-5);
+  ctx.fillText('Vbus (+)', 18, Vy - 6);
   ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(16,Gy); ctx.lineTo(W-16,Gy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(14, Gy); ctx.lineTo(W - 6, Gy); ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '10px sans-serif';
-  ctx.fillText('GND', 20, Gy+13);
+  ctx.fillText('GND', 18, Gy + 13);
 
-  function wl(x1,y1,x2,y2,col,lw) {
-    ctx.strokeStyle=col; ctx.lineWidth=lw||0.5; ctx.setLineDash([]); ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  function wl(x1, y1, x2, y2, col, lw) {
+    ctx.strokeStyle = col; ctx.lineWidth = lw || 0.5; ctx.setLineDash([]); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
   }
 
   function drawMOS(cx, isH, state, col) {
-    const y=isH?mhY:mlY, w=38, h=isH?mhH:mlH, x=cx-w/2;
-    const act=state==='on'||state==='pwm'||state==='bd';
-    const ac=state==='bd'?BD:act?col:'rgba(255,255,255,0.12)';
-    ctx.fillStyle=act?ac+'1e':'rgba(255,255,255,0.02)';
-    ctx.strokeStyle=act?ac:'rgba(255,255,255,0.12)'; ctx.lineWidth=act?1.5:0.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.roundRect(x,y,w,h,4); ctx.fill(); ctx.stroke();
-    const lbl=state==='pwm'?'PWM':state==='on'?'ON':state==='off'?'OFF':state==='bd'?'BD':'Hi-Z';
-    ctx.font=(act?'bold ':'')+' 10px JetBrains Mono,monospace';
-    ctx.fillStyle=state==='bd'?BD:act?col:'rgba(255,255,255,0.28)';
-    ctx.textAlign='center'; ctx.fillText(lbl,cx,y+h/2+4);
-    const da=isH?1:-1, dy2=isH?y+h-8:y+8, t=4;
-    ctx.fillStyle=state==='bd'?BD+'88':'rgba(255,255,255,0.07)';
-    ctx.strokeStyle=state==='bd'?BD:'rgba(255,255,255,0.12)'; ctx.lineWidth=state==='bd'?1.5:0.5;
+    const y = isH ? mhY : mlY, w = 38, h = isH ? mhH : mlH, x = cx - w / 2;
+    const act = state === 'on' || state === 'pwm' || state === 'bd';
+    const ac = state === 'bd' ? BD : act ? col : 'rgba(255,255,255,0.12)';
+    ctx.fillStyle = act ? ac + '1e' : 'rgba(255,255,255,0.02)';
+    ctx.strokeStyle = act ? ac : 'rgba(255,255,255,0.12)'; ctx.lineWidth = act ? 1.5 : 0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill(); ctx.stroke();
+    const lbl = state === 'pwm' ? 'PWM' : state === 'on' ? 'ON' : state === 'off' ? 'OFF' : state === 'bd' ? 'BD' : 'Hi-Z';
+    ctx.font = (act ? 'bold ' : '') + '9px JetBrains Mono,monospace';
+    ctx.fillStyle = state === 'bd' ? BD : act ? col : 'rgba(255,255,255,0.28)';
+    ctx.textAlign = 'center'; ctx.fillText(lbl, cx, y + h / 2 + 3);
+
+    // ボディダイオード
+    const da = isH ? 1 : -1, dy2 = isH ? y + h - 7 : y + 7, t = 3.5;
+    ctx.fillStyle = state === 'bd' ? BD + '88' : 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = state === 'bd' ? BD : 'rgba(255,255,255,0.12)'; ctx.lineWidth = state === 'bd' ? 1.5 : 0.5;
     ctx.beginPath();
-    ctx.moveTo(cx-t,dy2-da*t); ctx.lineTo(cx+t,dy2-da*t); ctx.lineTo(cx,dy2+da*t);
+    ctx.moveTo(cx - t, dy2 - da * t); ctx.lineTo(cx + t, dy2 - da * t); ctx.lineTo(cx, dy2 + da * t);
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx-t,dy2+da*t); ctx.lineTo(cx+t,dy2+da*t); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - t, dy2 + da * t); ctx.lineTo(cx + t, dy2 + da * t); ctx.stroke();
+
+    // ゲート端子（左側から引き出し）
+    const gateY = isH ? y + h / 2 : y + h / 2;
+    const gateX = x - 8;
+    // ゲートライン（MOSFETの左側へ）
+    ctx.strokeStyle = col + 'bb'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(x, gateY); ctx.lineTo(gateX, gateY); ctx.stroke();
+    ctx.setLineDash([]);
+    // ゲート丸端子
+    ctx.fillStyle = act ? col : 'rgba(255,255,255,0.2)';
+    ctx.beginPath(); ctx.arc(gateX, gateY, 2.5, 0, Math.PI * 2); ctx.fill();
+    // ゲートドライバーへの矢印ライン
+    const gdX = 12;
+    ctx.strokeStyle = act ? col + '99' : 'rgba(255,255,255,0.15)'; ctx.lineWidth = 0.8; ctx.setLineDash([1.5, 2]);
+    ctx.beginPath(); ctx.moveTo(gateX, gateY); ctx.lineTo(gdX + 4, gateY); ctx.stroke();
+    ctx.setLineDash([]);
+    // ゲートドライバーIC端子
+    ctx.fillStyle = act ? col + 'cc' : 'rgba(255,255,255,0.18)';
+    ctx.beginPath(); ctx.arc(gdX, gateY, 2, 0, Math.PI * 2); ctx.fill();
   }
 
-  ['U','V','W'].forEach((ph,pi) => {
-    const cx=phX[pi], col=PC[ph];
-    const hs=getMosState(ph,true,si,pwm), ls=getMosState(ph,false,si,pwm);
-    const aH=hs==='on'||hs==='pwm'||hs==='bd', aL=ls==='on'||ls==='bd';
-    wl(cx,Vy,cx,mhY,aH?col:OW,aH?1.5:0.5);
-    drawMOS(cx,true,hs,col);
-    wl(cx,mhY+mhH,cx,coilY-7,aH||aL?col:OW,aH||aL?1.5:0.5);
-    wl(cx,coilY+7,cx,mlY,aL?col:OW,aL?1.5:0.5);
-    drawMOS(cx,false,ls,col);
-    wl(cx,mlY+mlH,cx,Gy,aL?col:OW,aL?1.5:0.5);
-    ctx.fillStyle=col; ctx.font='bold 10px JetBrains Mono,monospace'; ctx.textAlign='center';
-    ctx.fillText(ph,cx,mhY-5);
+  // ゲートドライバーICボックス（左端）
+  const gdBoxX = 4, gdBoxW = 16;
+  const allGateY = [];
+  ['U', 'V', 'W'].forEach((ph, pi) => {
+    const cx = phX[pi];
+    const x = cx - 19;
+    allGateY.push(mhY + mhH / 2); // H side
+    allGateY.push(mlY + mlH / 2); // L side
+  });
+  const gdBoxTop = Math.min(...allGateY) - 6;
+  const gdBoxBot = Math.max(...allGateY) + 6;
+  ctx.fillStyle = 'rgba(30,50,80,0.7)';
+  ctx.strokeStyle = 'rgba(100,180,255,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.roundRect(gdBoxX, gdBoxTop, gdBoxW, gdBoxBot - gdBoxTop, 3); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(100,180,255,0.55)'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+  ctx.save(); ctx.translate(gdBoxX + gdBoxW / 2, (gdBoxTop + gdBoxBot) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Gate Driver', 0, 3);
+  ctx.restore();
+  // MCUからの矢印
+  ctx.strokeStyle = 'rgba(100,180,255,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+  ctx.beginPath(); ctx.moveTo(gdBoxX + gdBoxW / 2, gdBoxTop - 4); ctx.lineTo(gdBoxX + gdBoxW / 2, gdBoxTop); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(100,180,255,0.5)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('MCU', gdBoxX + gdBoxW / 2, gdBoxTop - 7);
+
+  // 各相のMOSFET + 配線
+  ['U', 'V', 'W'].forEach((ph, pi) => {
+    const cx = phX[pi], col = PC[ph];
+    const hs = getMosState(ph, true, si, pwm), ls = getMosState(ph, false, si, pwm);
+    const aH = hs === 'on' || hs === 'pwm' || hs === 'bd', aL = ls === 'on' || ls === 'bd';
+
+    // 縦配線
+    wl(cx, Vy, cx, mhY, aH ? col : OW, aH ? 1.5 : 0.5);
+    drawMOS(cx, true, hs, col);
+    wl(cx, mhY + mhH, cx, coilY - 8, (aH || aL) ? col : OW, (aH || aL) ? 1.5 : 0.5);
+    wl(cx, coilY + 8, cx, mlY, aL ? col : OW, aL ? 1.5 : 0.5);
+    drawMOS(cx, false, ls, col);
+    wl(cx, mlY + mlH, cx, Gy, aL ? col : OW, aL ? 1.5 : 0.5);
+
+    // 相ラベル
+    ctx.fillStyle = col; ctx.font = 'bold 10px JetBrains Mono,monospace'; ctx.textAlign = 'center';
+    ctx.fillText(ph, cx, mhY - 7);
+
+    // ノード点（中点 = コイル接続点）を強調
+    const isSrc = ph === st.src, isDst = ph === st.dst, isMon = ph === st.mon;
+    const nodeActive = isSrc || isDst;
+    ctx.fillStyle = nodeActive ? col : (isMon ? col + '88' : 'rgba(255,255,255,0.15)');
+    ctx.beginPath(); ctx.arc(cx, coilY, nodeActive ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // BEMF計測点ラベル（モニタ相のみ）
+    if (isMon) {
+      ctx.strokeStyle = col + 'aa'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(cx + (pi === 2 ? -1 : 1) * 20, coilY); ctx.lineTo(cx + (pi === 2 ? -1 : 1) * 44, coilY); ctx.stroke();
+      ctx.setLineDash([]);
+      const bx = cx + (pi === 2 ? -1 : 1) * 50;
+      ctx.fillStyle = col; ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = pi === 2 ? 'end' : 'start';
+      ctx.fillText('BEMF', bx, coilY - 3);
+      ctx.fillText('ADC', bx, coilY + 8);
+      // ADCコネクタ記号
+      ctx.strokeStyle = col + '88'; ctx.lineWidth = 0.8; ctx.setLineDash([]);
+      const bsX = pi === 2 ? bx + 2 : bx - 2, bsY = coilY - 1;
+      ctx.strokeRect(bsX + (pi === 2 ? 0 : -8), bsY + 3, 8, 9);
+    }
   });
 
-  const sx=phX[['U','V','W'].indexOf(st.src)];
-  const dx=phX[['U','V','W'].indexOf(st.dst)];
-  const mx=phX[['U','V','W'].indexOf(st.mon)];
+  // 主電流・BD電流描画（矢印ライン）
+  const sx = phX[['U', 'V', 'W'].indexOf(st.src)];
+  const dx = phX[['U', 'V', 'W'].indexOf(st.dst)];
+  const mx = phX[['U', 'V', 'W'].indexOf(st.mon)];
 
-  coilBumps(ctx, Math.min(sx,dx), Math.max(sx,dx), coilY, MAIN, 2);
-  ctx.fillStyle=MAIN; ctx.font='10px sans-serif'; ctx.textAlign='center';
-  ctx.fillText(st.src+'→'+st.dst+' コイル', (sx+dx)/2, coilY-12);
+  coilBumps(ctx, Math.min(sx, dx), Math.max(sx, dx), coilY, MAIN, 2);
+  ctx.fillStyle = MAIN; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(st.src + '→' + st.dst + ' コイル', (sx + dx) / 2, coilY - 12);
 
-  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
   if (pwm === 'on') {
-    [
-      [sx,Vy+2,sx,mhY+mhH/2],
-      [sx,mhY+mhH,sx,coilY],
-      [dx,coilY,dx,mlY],
-      [dx,mlY+mlH,dx,Gy-2],
-    ].forEach(([x1,y1,x2,y2]) => dashedSeg(ctx,x1,y1,x2,y2,MAIN));
-    arrow(ctx,sx,(Vy+mhY)/2,Math.PI/2,MAIN);
-    arrow(ctx,sx,(mhY+mhH+coilY)/2,Math.PI/2,MAIN);
-    arrow(ctx,dx,(coilY+mlY)/2,Math.PI/2,MAIN);
-    arrow(ctx,dx,(mlY+mlH+Gy)/2,Math.PI/2,MAIN);
-
+    [[sx, Vy + 2, sx, mhY + mhH / 2], [sx, mhY + mhH, sx, coilY],
+     [dx, coilY, dx, mlY], [dx, mlY + mlH, dx, Gy - 2]
+    ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, MAIN));
+    arrow(ctx, sx, (Vy + mhY) / 2, Math.PI / 2, MAIN);
+    arrow(ctx, sx, (mhY + mhH + coilY) / 2, Math.PI / 2, MAIN);
+    arrow(ctx, dx, (coilY + mlY) / 2, Math.PI / 2, MAIN);
+    arrow(ctx, dx, (mlY + mlH + Gy) / 2, Math.PI / 2, MAIN);
   } else if (pwm === 'off') {
-    [
-      [sx,Gy-2,sx,mlY+mlH],
-      [sx,mlY,sx,coilY],
-      [dx,coilY,dx,mlY],
-      [dx,mlY+mlH,dx,Gy-2],
-    ].forEach(([x1,y1,x2,y2]) => dashedSeg(ctx,x1,y1,x2,y2,BD));
-    ctx.strokeStyle=BD; ctx.lineWidth=2.5; ctx.setLineDash([5,4]);
-    ctx.beginPath(); ctx.moveTo(sx,Gy-2); ctx.lineTo(dx,Gy-2); ctx.stroke(); ctx.setLineDash([]);
-    arrow(ctx,sx,mlY+mlH+5,-Math.PI/2,BD);
-    arrow(ctx,sx,(mlY+coilY)/2,-Math.PI/2,BD);
-    arrow(ctx,dx,(coilY+mlY)/2,Math.PI/2,BD);
-    arrow(ctx,dx,(mlY+mlH+Gy)/2,Math.PI/2,BD);
-    arrow(ctx,(sx+dx)/2+(sx<dx?4:-4),Gy-2,sx<dx?Math.PI:0,BD,5);
-    ctx.fillStyle=BD; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('LS-BD 還流（Vbus不使用）',(sx+dx)/2,Gy+12);
-
+    [[sx, Gy - 2, sx, mlY + mlH], [sx, mlY, sx, coilY],
+     [dx, coilY, dx, mlY], [dx, mlY + mlH, dx, Gy - 2]
+    ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, BD));
+    ctx.strokeStyle = BD; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(sx, Gy - 2); ctx.lineTo(dx, Gy - 2); ctx.stroke(); ctx.setLineDash([]);
+    arrow(ctx, sx, mlY + mlH + 5, -Math.PI / 2, BD);
+    arrow(ctx, sx, (mlY + coilY) / 2, -Math.PI / 2, BD);
+    arrow(ctx, dx, (coilY + mlY) / 2, Math.PI / 2, BD);
+    arrow(ctx, dx, (mlY + mlH + Gy) / 2, Math.PI / 2, BD);
+    arrow(ctx, (sx + dx) / 2 + (sx < dx ? 4 : -4), Gy - 2, sx < dx ? Math.PI : 0, BD, 5);
+    ctx.fillStyle = BD; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('LS-BD 還流', (sx + dx) / 2, Gy + 12);
   } else {
-    [
-      [sx,coilY,sx,mhY+mhH+4],
-      [mx,coilY,mx,mhY+mhH/2],
-      [mx,mhY,mx,Vy+2],
-    ].forEach(([x1,y1,x2,y2]) => dashedSeg(ctx,x1,y1,x2,y2,BD));
-    ctx.strokeStyle=BD; ctx.lineWidth=2.5; ctx.setLineDash([5,4]);
-    ctx.beginPath(); ctx.moveTo(mx,Vy+2); ctx.lineTo(sx,Vy+2); ctx.stroke(); ctx.setLineDash([]);
-    arrow(ctx,mx,(mhY+Vy)/2,-Math.PI/2,BD);
-    arrow(ctx,(mx+sx)/2+(mx>sx?4:-4),Vy+2,mx>sx?Math.PI:0,BD,5);
-    dashedSeg(ctx,dx,coilY,dx,mlY,BD,1.5);
-    dashedSeg(ctx,dx,mlY+mlH,dx,Gy-2,BD,1.5);
-    ctx.fillStyle=BD; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
-    ctx.fillText(st.mon+'_H BD: ノード電位>Vbus → 回生',(mx+sx)/2,Vy-5);
-    ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='9px sans-serif';
-    ctx.fillText('電流向きは前ステップと同じ',(mx+sx)/2,Vy-15);
+    [[sx, coilY, sx, mhY + mhH + 4], [mx, coilY, mx, mhY + mhH / 2], [mx, mhY, mx, Vy + 2]
+    ].forEach(([x1, y1, x2, y2]) => dashedSeg(ctx, x1, y1, x2, y2, BD));
+    ctx.strokeStyle = BD; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(mx, Vy + 2); ctx.lineTo(sx, Vy + 2); ctx.stroke(); ctx.setLineDash([]);
+    arrow(ctx, mx, (mhY + Vy) / 2, -Math.PI / 2, BD);
+    arrow(ctx, (mx + sx) / 2 + (mx > sx ? 4 : -4), Vy + 2, mx > sx ? Math.PI : 0, BD, 5);
+    dashedSeg(ctx, dx, coilY, dx, mlY, BD, 1.5);
+    dashedSeg(ctx, dx, mlY + mlH, dx, Gy - 2, BD, 1.5);
+    ctx.fillStyle = BD; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(st.mon + '_H BD 回生', (mx + sx) / 2, Vy - 6);
   }
 
-  // BEMF監視線
-  const mmY=(ntY+nbY)/2;
-  const ad=['U','V','W'].indexOf(st.mon)===2?-1:1;
-  ctx.setLineDash([3,3]); ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(mx,mmY); ctx.lineTo(mx+ad*44,mmY); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='9px sans-serif';
-  ctx.textAlign=ad>0?'start':'end';
-  ctx.fillText('ADC', mx+ad*47, mmY+4);
-  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.5;
-  ctx.strokeRect(mx-5,mmY+7,10,11);
-  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='8px sans-serif'; ctx.textAlign='center';
-  ctx.fillText('R',mx,mmY+16);
+  // ---- 右端にUVW三相配線の引き出し端子 ----
+  // モータcanvasと接続することを示す「コネクタ矢印」
+  ['U', 'V', 'W'].forEach((ph, pi) => {
+    const cx = phX[pi], col = PC[ph];
+    const isSrc = ph === st.src, isDst = ph === st.dst;
+    const active = isSrc || isDst;
+    // 右端へ向かう水平線
+    ctx.strokeStyle = active ? col : col + '44';
+    ctx.lineWidth = active ? 2 : 0.8; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(cx, coilY); ctx.lineTo(W - 2, coilY); ctx.stroke();
+    // 矢印ヘッド（右端）
+    if (active) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(W - 2, coilY);
+      ctx.lineTo(W - 8, coilY - 4);
+      ctx.lineTo(W - 8, coilY + 4);
+      ctx.closePath(); ctx.fill();
+    }
+    // 相ラベル（配線端）
+    ctx.fillStyle = active ? col : col + '66'; ctx.font = (active ? 'bold ' : '') + '9px JetBrains Mono,monospace';
+    ctx.textAlign = 'end';
+    ctx.fillText(ph, W - 10, coilY - 4);
+  });
 }
 
 /* ============================================================
    DRAW GATE SIGNAL CANVAS
+   左: インバータ概略図（6 MOSFET + ゲート線）
+   右: 6本のゲート波形（UH/UL/VH/VL/WH/WL）
    ============================================================ */
 function drawGate() {
   const { ctx, W, H } = setupCanvas('gate-canvas');
   ctx.clearRect(0, 0, W, H);
-  const PAD = { l:34, r:8, t:7, b:14 };
-  const pw = W-PAD.l-PAD.r, ph3H=(H-PAD.t-PAD.b)/3;
 
-  ctx.fillStyle='rgba(251,191,36,0.08)';
-  ctx.fillRect(PAD.l+(si/6)*pw, PAD.t, pw/6, H-PAD.t-PAD.b);
+  // --- 左側: インバータ概略図 ---
+  const schW = 100; // 概略図エリア幅
+  const schPadL = 8, schPadT = 18, schPadB = 12;
+  const sH = H - schPadT - schPadB;
+  const Vy = schPadT, Gy = schPadT + sH;
+  const phXs = [schPadL + 22, schPadL + 44, schPadL + 66];
+  const mosH = 10;
+  const mhY = Vy + 8, mlY = Gy - 18;
+  const midY = (mhY + mosH + mlY) / 2;
 
+  // Vbus / GND
+  ctx.strokeStyle = 'rgba(200,110,20,0.5)'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(schPadL + 10, Vy); ctx.lineTo(schPadL + 78, Vy); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(schPadL + 10, Gy); ctx.lineTo(schPadL + 78, Gy); ctx.stroke();
+  ctx.fillStyle = '#d97706'; ctx.font = '7px sans-serif'; ctx.textAlign = 'start';
+  ctx.fillText('Vbus', schPadL + 10, Vy - 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('GND', schPadL + 10, Gy + 9);
+
+  const PHASES = ['U', 'V', 'W'];
+  PHASES.forEach((ph, pi) => {
+    const cx = phXs[pi], col = PC[ph];
+    const hs = getMosState(ph, true, si, pwm), ls = getMosState(ph, false, si, pwm);
+    const aH = hs === 'on' || hs === 'pwm' || hs === 'bd';
+    const aL = ls === 'on' || ls === 'bd';
+
+    // 縦配線
+    ctx.strokeStyle = aH ? col : 'rgba(255,255,255,0.1)'; ctx.lineWidth = aH ? 1.5 : 0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(cx, Vy); ctx.lineTo(cx, mhY); ctx.stroke();
+    ctx.strokeStyle = (aH || aL) ? col : 'rgba(255,255,255,0.1)'; ctx.lineWidth = (aH || aL) ? 1.5 : 0.5;
+    ctx.beginPath(); ctx.moveTo(cx, mhY + mosH); ctx.lineTo(cx, mlY); ctx.stroke();
+    ctx.strokeStyle = aL ? col : 'rgba(255,255,255,0.1)'; ctx.lineWidth = aL ? 1.5 : 0.5;
+    ctx.beginPath(); ctx.moveTo(cx, mlY + mosH); ctx.lineTo(cx, Gy); ctx.stroke();
+
+    // MOSFETボックス
+    [true, false].forEach(isH => {
+      const st2 = getMosState(ph, isH, si, pwm);
+      const act = st2 === 'on' || st2 === 'pwm' || st2 === 'bd';
+      const ac = st2 === 'bd' ? '#a78bfa' : col;
+      const my = isH ? mhY : mlY;
+      ctx.fillStyle = act ? ac + '25' : 'rgba(255,255,255,0.03)';
+      ctx.strokeStyle = act ? ac : 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = act ? 1 : 0.4; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.roundRect(cx - 6, my, 12, mosH, 2); ctx.fill(); ctx.stroke();
+
+      // ゲート端子 → タイミングチャートへ接続するドット
+      const gy2 = my + mosH / 2;
+      ctx.fillStyle = act ? ac : 'rgba(255,255,255,0.2)';
+      ctx.beginPath(); ctx.arc(cx - 6, gy2, 1.8, 0, Math.PI * 2); ctx.fill();
+      // ゲートラベル（MOSFETの右側）
+      const ghLabel = isH ? ph + 'H' : ph + 'L';
+      ctx.fillStyle = act ? ac : 'rgba(255,255,255,0.25)';
+      ctx.font = (act ? 'bold ' : '') + '6px JetBrains Mono,monospace'; ctx.textAlign = 'start';
+      ctx.fillText(ghLabel, cx + 7, gy2 + 2);
+    });
+
+    // 相ラベル
+    ctx.fillStyle = col; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(ph, cx, Gy + 9);
+  });
+
+  // 概略図とタイミングチャートの区切り線
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 0.5; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(schW, 2); ctx.lineTo(schW, H - 2); ctx.stroke(); ctx.setLineDash([]);
+
+  // --- 右側: 6チャンネルゲート波形 ---
+  const PAD = { l: schW + 6, r: 6, t: 6, b: 12 };
+  const pw = W - PAD.l - PAD.r;
+  const chH = (H - PAD.t - PAD.b) / 6; // 6チャンネル分
+
+  // ステップ背景
+  ctx.fillStyle = 'rgba(251,191,36,0.07)';
+  ctx.fillRect(PAD.l + (si / 6) * pw, PAD.t, pw / 6, H - PAD.t - PAD.b);
+
+  // ステップ区切り・ラベル
   for (let s = 0; s <= 6; s++) {
-    const lx = PAD.l+(s/6)*pw;
-    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=0.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(lx,PAD.t); ctx.lineTo(lx,H-PAD.b); ctx.stroke();
-    if (s<6) {
-      const isCur=s===si;
-      ctx.fillStyle=isCur?'#fbbf24':'rgba(255,255,255,0.2)';
-      ctx.font=(isCur?'bold ':'')+' 8px sans-serif'; ctx.textAlign='center';
-      ctx.fillText('S'+(s+1), lx+pw/12, H-1);
+    const lx = PAD.l + (s / 6) * pw;
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(lx, PAD.t); ctx.lineTo(lx, H - PAD.b); ctx.stroke();
+    if (s < 6) {
+      const isCur = s === si;
+      ctx.fillStyle = isCur ? '#fbbf24' : 'rgba(255,255,255,0.2)';
+      ctx.font = (isCur ? 'bold ' : '') + '7px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('S' + (s + 1), lx + pw / 12, H - 1);
     }
   }
 
-  ['U','V','W'].forEach((ph,pi) => {
-    const by=PAD.t+pi*ph3H, hiY=by+2, loY=by+ph3H-5, midY=(hiY+loY)/2;
-    const col=PC[ph];
-    ctx.fillStyle=col; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='end';
-    ctx.fillText(ph, PAD.l-3, midY+3);
+  // 6チャンネル: UH, UL, VH, VL, WH, WL
+  const channels = [
+    { ph: 'U', isH: true,  label: 'UH' },
+    { ph: 'U', isH: false, label: 'UL' },
+    { ph: 'V', isH: true,  label: 'VH' },
+    { ph: 'V', isH: false, label: 'VL' },
+    { ph: 'W', isH: true,  label: 'WH' },
+    { ph: 'W', isH: false, label: 'WL' },
+  ];
 
-    for (let s2=0; s2<6; s2++) {
-      const sst=STEPS[s2];
-      const hs=[sst.uh,sst.vh,sst.wh][pi], ls=[sst.ul,sst.vl,sst.wl][pi];
-      const fx=PAD.l+(s2/6)*pw, fw=pw/6, isCur=s2===si;
-      ctx.globalAlpha=isCur?1:0.18;
-      ctx.strokeStyle=col; ctx.lineCap='square';
+  channels.forEach((ch, ci) => {
+    const by = PAD.t + ci * chH;
+    const hiY = by + 2, loY = by + chH - 3, midCY = (hiY + loY) / 2;
+    const col = PC[ch.ph];
+    const isCurCh = getMosState(ch.ph, ch.isH, si, pwm);
+    const isActive = isCurCh === 'on' || isCurCh === 'pwm' || isCurCh === 'bd';
 
-      if (hs) {
-        const np=5, sg=fw/np, on=sg*(duty/100);
-        ctx.lineWidth=isCur?2:0.7; ctx.setLineDash([]);
+    // チャンネルラベル
+    ctx.fillStyle = isActive ? col : col + '55';
+    ctx.font = (isActive ? 'bold ' : '') + '8px JetBrains Mono,monospace'; ctx.textAlign = 'end';
+    ctx.fillText(ch.label, PAD.l - 2, midCY + 3);
+
+    // ゲートドライバーからMOSFETへの接続線（概略図との対応）
+    // 現ステップでアクティブな場合のみ強調
+    if (isActive) {
+      ctx.strokeStyle = col + '40'; ctx.lineWidth = 0.5; ctx.setLineDash([1, 2]);
+      ctx.beginPath(); ctx.moveTo(PAD.l - 6, midCY); ctx.lineTo(PAD.l - 2, midCY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(PAD.l - 7, midCY, 1.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 波形描画（6ステップ分）
+    for (let s2 = 0; s2 < 6; s2++) {
+      const sst = STEPS[s2];
+      const phIdx = ['U', 'V', 'W'].indexOf(ch.ph);
+      const hs = [sst.uh, sst.vh, sst.wh][phIdx];
+      const ls = [sst.ul, sst.vl, sst.wl][phIdx];
+      const fx = PAD.l + (s2 / 6) * pw, fw = pw / 6;
+      const isCur = s2 === si;
+      ctx.globalAlpha = isCur ? 1 : 0.2;
+      ctx.strokeStyle = col; ctx.lineCap = 'square';
+
+      if (ch.isH && hs) {
+        // PWM波形（ハイサイド）
+        const np = 4, sg = fw / np, on = sg * (duty / 100);
+        ctx.lineWidth = isCur ? 1.8 : 0.7; ctx.setLineDash([]);
         ctx.beginPath();
-        for (let p=0;p<np;p++) {
-          const px=fx+p*sg;
-          ctx.moveTo(px,loY); ctx.lineTo(px,hiY); ctx.lineTo(px+on,hiY);
-          ctx.lineTo(px+on,loY); ctx.lineTo(px+sg,loY);
+        for (let p = 0; p < np; p++) {
+          const px = fx + p * sg;
+          ctx.moveTo(px, loY); ctx.lineTo(px, hiY); ctx.lineTo(px + on, hiY);
+          ctx.lineTo(px + on, loY); ctx.lineTo(px + sg, loY);
         }
         ctx.stroke();
-      } else if (ls) {
-        ctx.lineWidth=isCur?2:0.7; ctx.setLineDash([]);
-        ctx.beginPath(); ctx.moveTo(fx,loY); ctx.lineTo(fx+fw,loY); ctx.stroke();
+        if (isCur) {
+          ctx.fillStyle = col; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('PWM ' + duty + '%', fx + fw / 2, by + 1);
+        }
+      } else if (!ch.isH && ls) {
+        // LOWサイドON
+        ctx.lineWidth = isCur ? 1.8 : 0.7; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(fx, hiY); ctx.lineTo(fx + fw, hiY); ctx.stroke();
+        if (isCur) {
+          ctx.fillStyle = col; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('ON', fx + fw / 2, by + 1);
+        }
       } else {
-        ctx.lineWidth=isCur?1:0.5; ctx.setLineDash([2,2]);
-        ctx.beginPath(); ctx.moveTo(fx,midY); ctx.lineTo(fx+fw,midY); ctx.stroke(); ctx.setLineDash([]);
+        // Hi-Z / OFF
+        ctx.lineWidth = isCur ? 1 : 0.4; ctx.setLineDash([1.5, 2]);
+        ctx.beginPath(); ctx.moveTo(fx, loY); ctx.lineTo(fx + fw, loY); ctx.stroke();
+        ctx.setLineDash([]);
+        if (isCur) {
+          ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('OFF', fx + fw / 2, by + 1);
+        }
       }
-      ctx.globalAlpha=1;
+      ctx.globalAlpha = 1;
+    }
 
-      if (isCur) {
-        const sst2=STEPS[si];
-        const lbl=[sst2.uh,sst2.vh,sst2.wh][pi]?('PWM '+duty+'%'):
-                  [sst2.ul,sst2.vl,sst2.wl][pi]?'LOW':'Hi-Z';
-        ctx.fillStyle=[sst2.uh,sst2.vh,sst2.wh][pi]?col:
-                      [sst2.ul,sst2.vl,sst2.wl][pi]?col:'rgba(255,255,255,0.25)';
-        ctx.font='bold 8px sans-serif'; ctx.textAlign='center';
-        ctx.fillText(lbl, fx+fw/2, by+1);
-      }
+    // チャンネル区切り線
+    if (ci < 5) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(PAD.l, by + chH); ctx.lineTo(W - PAD.r, by + chH); ctx.stroke();
     }
   });
+
+  // カーソル
+  const curX = PAD.l + (si / 6) * pw + pw / 12;
+  ctx.strokeStyle = 'rgba(251,191,36,0.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(curX, PAD.t); ctx.lineTo(curX, H - PAD.b); ctx.stroke(); ctx.setLineDash([]);
+}
 
   const curX=PAD.l+(si/6)*pw+pw/12;
   ctx.strokeStyle='rgba(251,191,36,0.6)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
