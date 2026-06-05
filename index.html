@@ -214,6 +214,31 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
 .zc-text  { font-size: 11px; color: var(--text2); line-height: 1.7; }
 .zc-text strong { color: var(--c-acc); }
 
+/* RC-PWM number inputs */
+.rc-num  { width:56px;font-size:11px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-family:'JetBrains Mono',monospace; }
+.rc-lbl  { font-size:10px;color:var(--text3); }
+.rc-unit { font-size:10px;color:var(--text3); }
+
+/* RC mode button */
+.rc-mode-btn {
+  padding: 4px 10px; font-size: 11px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: rgba(255,255,255,0.03); color: var(--text2); cursor: pointer;
+}
+.rc-mode-btn.active { background: rgba(56,189,248,0.15); border-color: rgba(56,189,248,0.5); color: var(--c-v); }
+
+/* BEMF panel legend */
+.bemf-legend {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  padding: 5px 10px 6px;
+  border-top: 1px solid var(--border);
+  background: rgba(255,255,255,0.015);
+}
+.bemf-legend .leg-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text3); }
+.bemf-legend .leg-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.bemf-legend .leg-line { width: 14px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.bemf-legend .leg-note { font-size: 9px; color: rgba(251,191,36,0.55); margin-left: 4px; }
+
 /* Footer */
 #footer {
   padding: 8px 20px; text-align: center;
@@ -230,7 +255,7 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
 <div id="header">
   <div>
     <h1>⚡ BLDC Motor 6-Step Commutation Visualizer</h1>
-    <div class="subtitle">4極(2極対)モータの台形波転流を回路図・BEMF波形・ロータ断面図で学ぶ</div>
+    <div class="subtitle">2極モータの台形波転流を回路図・BEMF波形・ロータ断面図で学ぶ</div>
   </div>
 </div>
 
@@ -249,27 +274,38 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
     <span id="mech-label" style="font-size:10px;color:var(--text3);min-width:70px">機械角 0.0°</span>
     <button class="play-btn" id="play-btn">▶ 自動再生</button>
   </div>
-  <!-- Row 3: PWM phase + Duty -->
+  <!-- Row 3: PWM phase + Duty / RC mode -->
   <div class="ctrl-row">
     <span class="ctrl-label">PWM位相</span>
     <button class="pwm-btn active-on" data-pwm="on">ON — 主電流</button>
     <button class="pwm-btn" data-pwm="off">OFF — LS-BD還流</button>
-    <button class="pwm-btn" data-pwm="comm">転流瞬間 — HS-BD回生</button>
-    <span style="margin-left:10px;font-size:10px;color:var(--text3)">デューティ比</span>
-    <input type="range" id="duty-slider" min="10" max="95" value="60" step="1" style="width:80px">
-    <span id="duty-label" style="font-size:11px;color:var(--c-acc);font-family:'JetBrains Mono',monospace;min-width:30px">60%</span>
+    <button class="pwm-btn" data-pwm="comm">転流瞬間 — 新src+BD回生</button>
+    <span style="margin-left:10px;font-size:10px;color:var(--text3)">制御モード</span>
+    <button class="rc-mode-btn" id="rc-mode-btn">直接デューティ</button>
   </div>
-  <!-- Legend -->
-  <div class="ctrl-row">
-    <div class="legend">
-      <div class="leg-item"><span class="leg-dot" style="background:var(--c-u)"></span>U相</div>
-      <div class="leg-item"><span class="leg-dot" style="background:var(--c-v)"></span>V相</div>
-      <div class="leg-item"><span class="leg-dot" style="background:var(--c-w)"></span>W相</div>
-      <div class="leg-item"><span class="leg-line" style="background:var(--c-main)"></span>主電流</div>
-      <div class="leg-item"><span class="leg-line" style="background:var(--c-bd)"></span>BD電流</div>
-      <div class="leg-item"><span class="leg-line" style="background:rgba(139,92,246,0.5)"></span>トルク概念</div>
-      <div class="leg-item"><span class="leg-dot" style="background:var(--c-acc)"></span>ZC点</div>
-    </div>
+  <!-- Row 4: duty / RC-PWM controls -->
+  <div class="ctrl-row" id="duty-row">
+    <span class="ctrl-label">デューティ比</span>
+    <input type="range" id="duty-slider" min="10" max="95" value="60" step="1" style="width:120px">
+    <span id="duty-label" style="font-size:11px;color:var(--c-acc);font-family:'JetBrains Mono',monospace;min-width:36px">60%</span>
+  </div>
+  <div class="ctrl-row" id="rc-row" style="display:none;flex-wrap:wrap;gap:6px 12px">
+    <span class="ctrl-label">RC-PWM</span>
+    <span class="rc-lbl">最小パルス</span>
+    <input type="number" id="rc-min-input" value="1000" min="100" max="9999" step="10" class="rc-num">
+    <span class="rc-unit">µs</span>
+    <span class="rc-lbl">最大パルス</span>
+    <input type="number" id="rc-max-input" value="2000" min="100" max="9999" step="10" class="rc-num">
+    <span class="rc-unit">µs</span>
+    <span class="rc-lbl">フレーム周期</span>
+    <input type="number" id="rc-frame-input" value="2000" min="500" max="100000" step="100" class="rc-num" style="width:70px">
+    <span class="rc-unit">µs</span>
+    <span class="rc-lbl" style="margin-left:4px">現在値</span>
+    <input type="range" id="rc-pulse-slider" min="1000" max="2000" value="1500" step="10" style="width:110px">
+    <input type="number" id="rc-pulse-num" value="1500" min="1000" max="2000" step="10" class="rc-num">
+    <span class="rc-unit">µs</span>
+    <span style="font-size:10px;color:var(--text3)">→ デューティ</span>
+    <span id="rc-duty-label" style="font-size:11px;color:var(--c-acc);font-family:'JetBrains Mono',monospace;min-width:36px">50%</span>
   </div>
 </div>
 
@@ -290,11 +326,19 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
   <div class="bottom-row">
     <div class="panel">
       <div class="panel-label">BEMF波形（ZC検出 → +30° → 転流）</div>
-      <canvas id="bemf-canvas" height="170"></canvas>
+      <canvas id="bemf-canvas" height="200"></canvas>
+      <div class="bemf-legend">
+        <div class="leg-item"><span class="leg-line" style="background:var(--c-u)"></span>U相 BEMF</div>
+        <div class="leg-item"><span class="leg-line" style="background:var(--c-v)"></span>V相 BEMF</div>
+        <div class="leg-item"><span class="leg-line" style="background:var(--c-w)"></span>W相 BEMF</div>
+        <div class="leg-item"><span class="leg-line" style="background:rgba(139,92,246,0.65)"></span>トルク概念</div>
+        <div class="leg-item"><span class="leg-dot" style="background:var(--c-acc)"></span>ZC点</div>
+        <div class="leg-item leg-note">ZC = N極がスロット正対の30°手前 (dΦ/dt=0→BEMF=0は正対時)</div>
+      </div>
     </div>
     <div class="panel">
       <div class="panel-label">ゲート信号（各MOSFETへの入力）</div>
-      <canvas id="gate-canvas" height="170"></canvas>
+      <canvas id="gate-canvas" height="210"></canvas>
     </div>
   </div>
 </div>
@@ -312,7 +356,7 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
 'use strict';
 /* ============================================================
    MOTOR PHYSICS
-   4極(2極対): 電気角 = 機械角 × 2
+   2極(1極対): 電気角 = 機械角
    座標系: 0°=12時(上), CW増加（工学標準）
    BEMFオフセット: U=330, V=90, W=210
    → N極が+スロット正対時にBEMF=+1(フラット頂点)
@@ -320,9 +364,11 @@ input[type=range] { cursor: pointer; accent-color: var(--c-acc); }
    → 全ステップ中盤でトルク T∝2I > 0 (CW方向) ✓
    コイル正スロット(機械角,CW系): U=0°, V=120°, W=240°
    ============================================================ */
-const POLE_PAIRS = 2;
+const POLE_PAIRS = 1;
 const PC = { U:'#f97316', V:'#38bdf8', W:'#4ade80' };
 const BO = { U:330, V:90, W:210 };
+const COIL_PLUS  = { U:0,   V:120, W:240 };  // +スロット機械角
+const COIL_MINUS = { U:180, V:300, W:60  };  // −スロット機械角
 
 const STEPS = [
   { el:[0,60],   src:'U', dst:'V', mon:'W', uh:1,ul:0, vh:0,vl:1, wh:0,wl:0 },
@@ -362,8 +408,8 @@ function getMosState(ph, isH, si, pwm) {
     if (isDst) return isH ? 'off' : 'on';
     return 'float';
   }
-  // comm
-  if (isSrc) return 'off';
+  // comm: 新src HS=ON (立ち上がり中), dst LS=ON, 旧src(mon) HS=BD回生
+  if (isSrc) return isH ? 'on' : 'off';
   if (isDst) return isH ? 'off' : 'on';
   return isH ? 'bd' : 'float';
 }
@@ -374,14 +420,27 @@ function getMosState(ph, isH, si, pwm) {
 let si = 0;      // step index 0-5
 let frac = 0;    // 0-59 (deg within step)
 let pwm = 'on';
-let duty = 60;
+let duty    = 60;
+let rcMode     = false;   // false=直接デューティ, true=RC-PWMモード
+let rcPulse    = 1500;    // µs (現在のパルス幅)
+let rcPulseMin = 1000;    // µs (最小パルス幅 = 0%スロットル)
+let rcPulseMax = 2000;    // µs (最大パルス幅 = 100%スロットル)
+let rcFrame    = 2000;    // µs (フレーム周期, デフォルト2000µs=500Hz)
 let playing = false;
 let rafId = null;
 let lastTs = null;
-let elAcc = 0;  // 0-719 (自動再生時は0-720°機械1回転分を追跡)
+let elAcc = 0;  // 0-359 (自動再生時は0-360°機械1回転分を追跡)
 
 function elDeg() { return STEPS[si].el[0] + frac; }
-function mechDeg() { return elAcc / POLE_PAIRS; }  // 0-360° (自動再生時) / 0-180° (手動操作時)
+// RC-PWMモード時のデューティ比: (現在パルス幅 − 最小) / (最大 − 最小) × 100%
+function getDuty() {
+  if (!rcMode) return duty;
+  const range = rcPulseMax - rcPulseMin;
+  if (range <= 0) return 0;
+  return Math.round(Math.max(0, Math.min(100, (rcPulse - rcPulseMin) / range * 100)));
+}
+// +30° offset: ZC点(el=330°等)でN極がスロット正対(mech=0°等)と一致させるため
+function mechDeg() { return (elAcc / POLE_PAIRS + 30) % 360; }
 
 /* ============================================================
    CANVAS SETUP HELPER
@@ -478,7 +537,7 @@ function drawMotor() {
   }
   ctx.fillStyle = 'rgba(255,255,255,0.70)'; ctx.font = '8px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText('機械角（電気角 = ×2）', mX, mY - mR - 40);
+  ctx.fillText('機械角（＝電気角）', mX, mY - mR - 40);
 
   // ---- 3. スター結線内部配線（−スロット内壁 ↔ 中性点）----
   // この配線はコイル矩形・ロータより「前」に描いてもほぼ隠れるが、
@@ -588,6 +647,47 @@ function drawMotor() {
     });
   });
 
+  // ---- 5.5. 巻き線方向アーク ----
+  // 右手則: ●(電流=紙面手前)スロット → 外から見てCCW巻き → 親指=内向き → N極がロータ側
+  //         ×(電流=紙面奥) スロット → 外から見てCW巻き  → 親指=外向き → S極がロータ側
+  ['U', 'V', 'W'].forEach(ph => {
+    const isSrc = ph === st.src, isDst = ph === st.dst;
+    if (!isSrc && !isDst) return;
+    const col = PC[ph];
+    COIL_ALL[ph].forEach(([ang, sign]) => {
+      const isDot = (isSrc && sign === '+') || (isDst && sign === '-');
+      const rad   = d2r(ang);
+      const aR    = mR + 30;      // ステータ外枠内側の巻き線表示位置
+      const ax    = mX + aR * Math.cos(rad);
+      const ay    = mY + aR * Math.sin(rad);
+      const span  = 0.52;         // ラジアン (約30°)
+      const loopR = 9;
+      const a1 = rad - span, a2 = rad + span;
+      // 弧を描く（CCW=anticlockwise=true: ●スロット, CW=false: ×スロット）
+      ctx.strokeStyle = col + 'bb'; ctx.lineWidth = 1.8; ctx.setLineDash([]);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(ax, ay, loopR, a1, a2, isDot); // isDot→anticlockwise (CCW)
+      ctx.stroke();
+      // 矢印（弧の終端に接線方向で描く）
+      const tipAngle = isDot ? a1 : a2;
+      const tx = ax + loopR * Math.cos(tipAngle);
+      const ty = ay + loopR * Math.sin(tipAngle);
+      const tangent = isDot ? (tipAngle + Math.PI / 2) : (tipAngle - Math.PI / 2);
+      const as = 4.5;
+      ctx.fillStyle = col + 'bb';
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx + as * Math.cos(tangent + 0.55), ty + as * Math.sin(tangent + 0.55));
+      ctx.lineTo(tx + as * Math.cos(tangent - 0.55), ty + as * Math.sin(tangent - 0.55));
+      ctx.closePath(); ctx.fill();
+      // 極ラベル（弧中央）
+      ctx.fillStyle = col + 'dd'; ctx.font = 'bold 7px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(isDot ? 'N' : 'S', ax, ay);
+    });
+  });
+
   // ---- 6. ステータ側磁極表示（コイルが作る磁極をステータ内壁に半円で描画）----
   // 通電コイルの磁界の向き：
   //   src相（電流が+スロット●、-スロット×）→ 右手則で+スロット側がN極（ロータを向く）
@@ -639,7 +739,7 @@ function drawMotor() {
     ctx.fillText(ph + '相 磁束', mX + lblR * Math.cos(nRad), mY + lblR * Math.sin(nRad));
   });
 
-  // ---- 7. ロータ（4極）----
+  // ---- 7. ロータ（2極）----
   ctx.save();
   ctx.translate(mX, mY);
   ctx.rotate(mDeg * Math.PI / 180);
@@ -650,10 +750,8 @@ function drawMotor() {
   ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 0.8; ctx.stroke();
 
   const poles = [
-    { s: -45, e: 45,   t: 'N' },
-    { s:  45, e: 135,  t: 'S' },
-    { s: 135, e: 225,  t: 'N' },
-    { s: 225, e: 315,  t: 'S' },
+    { s: -90, e:  90,  t: 'N' },
+    { s:  90, e: 270,  t: 'S' },
   ];
   poles.forEach(p => {
     const a1 = (p.s - 90) * Math.PI / 180, a2 = (p.e - 90) * Math.PI / 180;
@@ -752,10 +850,10 @@ function drawBEMF() {
   const { ctx, W, H } = setupCanvas('bemf-canvas');
   ctx.clearRect(0, 0, W, H);
   const st = STEPS[si];
-  const PAD = { l:42, r:28, t:32, b:22 };
+  const PAD = { l:42, r:30, t:54, b:28 };
   const pw = W - PAD.l - PAD.r;
   const mY = PAD.t + (H - PAD.t - PAD.b) / 2;
-  const amp = (H - PAD.t - PAD.b) * 0.37;
+  const amp = (H - PAD.t - PAD.b) * 0.38;
 
   // ステップ背景
   ctx.fillStyle = 'rgba(251,191,36,0.07)';
@@ -874,20 +972,25 @@ function drawBEMF() {
     ctx.fillText('(次転流)', nextCommX, PAD.t+19);
   }
 
+  // ── ヘッダー領域ラベル（グラフ描画前の上部余白に配置）──
+  // 行1: 転流情報
+  ctx.fillStyle = 'rgba(251,191,36,0.90)'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'start';
+  ctx.fillText('転流: S'+(si+1)+' — '+st.src+'→'+st.dst+'相  | '+st.src+'H: PWM  '+st.dst+'L: ON  '+st.mon+': Hi-Z（BEMF監視）', PAD.l + 2, 11);
+  // 行2: BEMF監視中 + トルク概念
   ctx.fillStyle = monCol; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'start';
-  ctx.fillText(st.mon + '相 BEMF監視中 (Hi-Z)', PAD.l + 2, PAD.t + 12);
-  // 計測点の説明
-  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px sans-serif';
-  ctx.fillText('計測点: ' + st.mon + '相インバータ出力ノード（HS/LSの中点）対GND', PAD.l + 2, PAD.t + 23);
-  ctx.fillStyle = 'rgba(139,92,246,0.55)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'end';
-  ctx.fillText('トルク概念', W - PAD.r - 2, PAD.t + 12);
+  ctx.fillText(st.mon + '相 BEMF監視中', PAD.l + 2, 25);
+  ctx.fillStyle = 'rgba(139,92,246,0.75)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'end';
+  ctx.fillText('── トルク概念波形', W - PAD.r - 2, 25);
+  // 行3: 電流経路（小）
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'start';
+  ctx.fillText('電流経路: Vbus → '+st.src+'H(PWM) → '+st.src+'コイル → 中性点 → '+st.dst+'コイル → '+st.dst+'L(ON) → GND', PAD.l + 2, 38);
 
   // カーソル
   const curX = PAD.l + (elDeg()/360)*pw;
   ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
   ctx.beginPath(); ctx.moveTo(curX, PAD.t); ctx.lineTo(curX, H-PAD.b); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 9px JetBrains Mono,monospace'; ctx.textAlign = 'center';
-  ctx.fillText(elDeg()+'°', curX, PAD.t+9);
+  ctx.fillText(elDeg()+'°', curX, H - PAD.b - 4);
 
   const yOff = [-6, 4, 12];
   ['U','V','W'].forEach((ph, pi) => {
@@ -1250,7 +1353,7 @@ function drawGate() {
 
       if (ch.isH && hs) {
         // PWM波形（ハイサイド）
-        const np = 4, sg = fw / np, on = sg * (duty / 100);
+        const np = 4, sg = fw / np, on = sg * (getDuty() / 100);
         ctx.lineWidth = isCur ? 1.8 : 0.7; ctx.setLineDash([]);
         ctx.beginPath();
         for (let p = 0; p < np; p++) {
@@ -1261,7 +1364,7 @@ function drawGate() {
         ctx.stroke();
         if (isCur) {
           ctx.fillStyle = col; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
-          ctx.fillText('PWM ' + duty + '%', fx + fw / 2, by + 1);
+          ctx.fillText('PWM ' + getDuty() + '%', fx + fw / 2, by + 1);
         }
       } else if (!ch.isH && ls) {
         // LOWサイドON
@@ -1295,70 +1398,195 @@ function drawGate() {
   const curX = PAD.l + (si / 6) * pw + pw / 12;
   ctx.strokeStyle = 'rgba(251,191,36,0.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.moveTo(curX, PAD.t); ctx.lineTo(curX, H - PAD.b); ctx.stroke(); ctx.setLineDash([]);
+
+  // ── RC-PWMモード時: 下部にRC信号パネルを描画 ──
+  if (rcMode) {
+    const rcH = 38, rcY = H - rcH;
+    ctx.fillStyle = 'rgba(56,189,248,0.06)';
+    ctx.fillRect(PAD.l, rcY, pw, rcH);
+    ctx.strokeStyle = 'rgba(56,189,248,0.2)'; ctx.lineWidth = 0.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(PAD.l, rcY); ctx.lineTo(W - PAD.r, rcY); ctx.stroke();
+
+    // RC信号タイトル
+    ctx.fillStyle = 'rgba(56,189,248,0.85)'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'start';
+    ctx.fillText('RC入力 (ESCへ)', PAD.l + 3, rcY + 9);
+
+    const frameUs  = rcFrame;              // µs
+    const frameMs  = (rcFrame / 1000).toFixed(2); // ms for display
+    const dutyPct  = getDuty();
+    const frameW   = pw * 0.58; // 1フレーム分の描画幅
+    const rx0      = PAD.l + pw * 0.17;
+    const ry0      = rcY + 14, ry1 = rcY + rcH - 6;
+    const rMid     = (ry0 + ry1) / 2;
+    const pulseW   = frameW * (rcPulse / frameUs);
+
+    // GND ライン
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 0.7; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(rx0, rMid); ctx.lineTo(rx0 + frameW, rMid); ctx.stroke(); ctx.setLineDash([]);
+
+    // パルス波形: LOW → HIGH(パルス幅分) → LOW
+    const pH = ry1 - ry0 - 2;
+    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(rx0, ry1);
+    ctx.lineTo(rx0, ry0);             // 立ち上がり
+    ctx.lineTo(rx0 + pulseW, ry0);    // パルス幅
+    ctx.lineTo(rx0 + pulseW, ry1);    // 立ち下がり
+    ctx.lineTo(rx0 + frameW, ry1);    // LOW 継続
+    ctx.stroke();
+
+    // パルス幅ブレース
+    ctx.fillStyle = '#38bdf8'; ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'center';
+    ctx.fillText(rcPulse + 'µs', rx0 + pulseW / 2, ry0 - 2);
+    // フレーム幅ブレース
+    ctx.fillStyle = 'rgba(56,189,248,0.55)'; ctx.font = '7px sans-serif';
+    ctx.fillText(rcFrame + 'µs (' + frameMs + 'ms) フレーム', rx0 + frameW / 2, ry1 + 6);
+
+    // 矢印: → デューティ
+    const arx = rx0 + frameW + 10;
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'start';
+    ctx.fillText('→ duty', arx, rMid - 4);
+    ctx.fillStyle = 'var(--c-acc)' || '#fbbf24'; ctx.font = 'bold 9px JetBrains Mono,monospace';
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillText(dutyPct + '%', arx, rMid + 7);
+
+    // 公式
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '7px sans-serif';
+    ctx.textAlign = 'end';
+    ctx.fillText('(pw−1000)÷1000×100%', W - PAD.r - 2, rcY + rcH - 3);
+  }
 }
 
 /* ============================================================
    EXPLANATION PANEL
    ============================================================ */
+// ─ BEMF物理メモ ─
+// BEMF = -dΦ/dt。Φが最大/最小(N極がスロット正対)の瞬間はdΦ/dt=0→BEMF=0(ZC)。
+// N極がスロット正対の30°前後で|dΦ/dt|最大→|BEMF|最大(プラトー)。
+// 直交位置(90°)でΦ=0だがdΦ/dt最大→BEMFは最大。「直交=BEMF=0」は誤り。
 const STEP_EXPLS = [
   {
     title:'S1（電気角 0°〜60°）', conduction:'U→V 通電', monitor:'W相 BEMF監視',
     phaseDesc: {
-      U: bv => `src側（HS PWM）。N極がU+スロット(0°=12時)へ近づく途中→Φ_U増加→BEMF上昇中(${bv})。S1中盤(el=30°)でBEMF_U=+1フラット頂点に向かう。`,
-      V: bv => `dst側（LS ON）。S極がV+スロット(120°)付近→Φ_V負最大方向→BEMF_V≈−1の平坦部(${bv})。`,
-      W: bv => `Hi-Z（フロート）。S1開始(el=0°)でW相BEMFが下向きZC済み。S1中盤(el=30°, 機械角15°)でZC検出→S2への転流タイミング計算開始(${bv})。`,
+      U: bv => `src側（HS PWM）。N極(mech=30°→90°)がU+(0°)を通過してV+(120°)へ向かう区間→Φ_U変化率が高い→BEMF上昇・プラトー入り(${bv})。`,
+      V: bv => `dst側（LS ON）。N極(mech=30°→90°)がV+(120°)の手前を通過中→Φ_V変化率最大（負方向）→BEMF_V≈−1プラトー(${bv})。`,
+      W: bv => `Hi-Z（フロート）。S1中盤(el=30°, mech=60°)でW相BEMF下向きZC検出→30°待機→el=60°でS2へ転流。[ZC時: N極がW−スロット(60°)に正対→Φ_W最小→BEMF=0](${bv})`,
     }
   },
   {
     title:'S2（電気角 60°〜120°）', conduction:'U→W 通電', monitor:'V相 BEMF監視',
     phaseDesc: {
-      U: bv => `src側（HS PWM）。N極がU+スロット(0°)に正対→Φ_U最大→BEMF_U≈+1の平坦部(${bv})。`,
-      W: bv => `dst側（LS ON）。S極がW+スロット(240°)付近→Φ_W負方向→BEMF_W≈−1の平坦部へ(${bv})。`,
-      V: bv => `Hi-Z（フロート）。N極がV+スロット(120°)を通過後→Φ_V減少→下向きBEMF斜面(${bv})。S2中盤(el=90°, 機械角45°)で上向きZC→S3への転流タイミング(${bv})。`,
+      U: bv => `src側（HS PWM）。N極(mech=90°→150°)がU+(0°)〜V+(120°)中間区間→Φ_U変化率最大→BEMF_U≈+1プラトー(${bv})。`,
+      W: bv => `dst側（LS ON）。N極がW+(240°)の手前を遠方から通過中→Φ_W変化（負方向）→BEMF_W≈−1へ移行(${bv})。`,
+      V: bv => `Hi-Z（フロート）。S2中盤(el=90°, mech=120°)でV相BEMF上向きZC検出→S3への転流タイミング。[ZC時: N極がV+(120°)に正対→Φ_V最大→BEMF=0](${bv})`,
     }
   },
   {
     title:'S3（電気角 120°〜180°）', conduction:'V→W 通電', monitor:'U相 BEMF監視',
     phaseDesc: {
-      V: bv => `src側（HS PWM）。N極がV+スロット(120°)へ近づき正対→Φ_V増加→BEMF_V≈+1の平坦部へ(${bv})。`,
-      W: bv => `dst側（LS ON）。S極がW+スロット(240°)に正対→Φ_W負最大→BEMF_W≈−1の平坦部(${bv})。`,
-      U: bv => `Hi-Z（フロート）。N極がU+スロット(0°)を通過後→Φ_U減少→下向きBEMF斜面(${bv})。S3中盤(el=150°, 機械角75°)で下向きZC→S4への転流タイミング。`,
+      V: bv => `src側（HS PWM）。N極(mech=150°→210°)がV+(120°)〜W+(240°)中間区間→Φ_V変化率最大→BEMF_V≈+1プラトー(${bv})。`,
+      W: bv => `dst側（LS ON）。N極がW+(240°)の手前区間を通過中→Φ_W変化率最大（負方向）→BEMF_W≈−1プラトー(${bv})。`,
+      U: bv => `Hi-Z（フロート）。S3中盤(el=150°, mech=180°)でU相BEMF下向きZC検出→S4への転流タイミング。[ZC時: N極がU-(180°)に正対→Φ_U最小→BEMF=0](${bv})`,
     }
   },
   {
     title:'S4（電気角 180°〜240°）', conduction:'V→U 通電', monitor:'W相 BEMF監視',
     phaseDesc: {
-      V: bv => `src側（HS PWM）。N極がV+スロット(120°)に正対中→Φ_V最大→BEMF_V≈+1の平坦部(${bv})。`,
-      U: bv => `dst側（LS ON）。S極がU+スロット(0°)付近→Φ_U負方向→BEMF_U≈−1の平坦部へ(${bv})。`,
-      W: bv => `Hi-Z（フロート）。N極がW+スロット(240°)へ近づく→Φ_W増加→上向きBEMF斜面(${bv})。S4中盤(el=210°, 機械角105°)で上向きZC→S5への転流タイミング。`,
+      V: bv => `src側（HS PWM）。N極(mech=210°→270°)がV+(120°)〜W+(240°)後半区間→Φ_V変化率継続→BEMF_V≈+1プラトー末尾〜下降(${bv})。`,
+      U: bv => `dst側（LS ON）。N極がU-(180°)〜U+(360°)の中間区間を通過中→Φ_U変化率最大（負方向）→BEMF_U≈−1プラトー(${bv})。`,
+      W: bv => `Hi-Z（フロート）。S4中盤(el=210°, mech=240°)でW相BEMF上向きZC検出→S5への転流タイミング。[ZC時: N極がW+(240°)に正対→Φ_W最大→BEMF=0](${bv})`,
     }
   },
   {
     title:'S5（電気角 240°〜300°）', conduction:'W→U 通電', monitor:'V相 BEMF監視',
     phaseDesc: {
-      W: bv => `src側（HS PWM）。N極がW+スロット(240°)へ近づき正対→Φ_W増加→BEMF_W≈+1の平坦部へ(${bv})。`,
-      U: bv => `dst側（LS ON）。S極がU+スロット(0°)に正対→Φ_U負最大→BEMF_U≈−1の平坦部(${bv})。`,
-      V: bv => `Hi-Z（フロート）。N極がV+スロット(120°)を通過後→Φ_V減少→下向きBEMF斜面(${bv})。S5中盤(el=270°, 機械角135°)で下向きZC→S6への転流タイミング。`,
+      W: bv => `src側（HS PWM）。N極(mech=270°→330°)がW+(240°)〜U+(360°=0°)中間区間→Φ_W変化率最大→BEMF_W≈+1プラトー(${bv})。`,
+      U: bv => `dst側（LS ON）。N極がW+(240°)〜U+(360°)の中間区間を通過中→Φ_U変化率最大（負方向）→BEMF_U≈−1プラトー(${bv})。`,
+      V: bv => `Hi-Z（フロート）。S5中盤(el=270°, mech=300°)でV相BEMF下向きZC検出→S6への転流タイミング。[ZC時: N極がV-(300°)に正対→Φ_V最小→BEMF=0](${bv})`,
     }
   },
   {
     title:'S6（電気角 300°〜360°）', conduction:'W→V 通電', monitor:'U相 BEMF監視',
     phaseDesc: {
-      W: bv => `src側（HS PWM）。N極がW+スロット(240°)に正対中→Φ_W最大→BEMF_W≈+1の平坦部(${bv})。`,
-      V: bv => `dst側（LS ON）。S極がV+スロット(120°)付近→Φ_V負方向→BEMF_V≈−1の平坦部へ(${bv})。`,
-      U: bv => `Hi-Z（フロート）。N極がU+スロット(0°)へ近づく→Φ_U増加→上向きBEMF斜面(${bv})。S6中盤(el=330°, 機械角165°)で上向きZC→S1への転流タイミング。`,
+      W: bv => `src側（HS PWM）。N極(mech=330°→30°)がW+(240°)〜U+(0°)後半区間→Φ_W変化率継続→BEMF_W≈+1プラトー末尾(${bv})。`,
+      V: bv => `dst側（LS ON）。N極がV-(300°)〜V+(120°)の中間区間を通過中→Φ_V変化率最大（負方向）→BEMF_V≈−1プラトー(${bv})。`,
+      U: bv => `Hi-Z（フロート）。S6中盤(el=330°, mech=0°)でU相BEMF上向きZC検出→S1への転流タイミング。[ZC時: N極がU+(0°)に正対→Φ_U最大→BEMF=0](${bv})`,
     }
   },
 ];
 
 const PWM_INFO = {
-  on:   { label:'ON期間（主電流）',          cls:'active-on',
-          getDesc: st => `Vbus → ${st.src}_H(PWM) → コイル → ${st.dst}_L(ON) → GND` },
-  off:  { label:'OFF期間（LS-BD還流）',       cls:'active-bd',
-          getDesc: st => `コイル残留電流 → GND → ${st.src}_L(BD) → コイル → ${st.dst}_L(ON) → GND（Vbus不使用）` },
-  comm: { label:'転流瞬間（HS-BD回生）',      cls:'active-bd',
-          getDesc: st => `コイル残留電流 → ${st.mon}_H(BD) → Vbus へ回生（${st.mon}ノード電位がVbus超え）` },
+  on:   { label:'ON期間（主電流）',                  cls:'active-on',
+          getDesc: st => `Vbus → ${st.src}H(PWM) → ${st.src}コイル → 中性点 → ${st.dst}コイル → ${st.dst}L(ON) → GND` },
+  off:  { label:'OFF期間（LS-BD還流）',              cls:'active-bd',
+          getDesc: st => `${st.src}コイル残留電流 → GND → ${st.src}L(BD) → ${st.src}コイル → 中性点 → ${st.dst}コイル → ${st.dst}L(ON) → GND（Vbus不使用）` },
+  comm: { label:'転流瞬間（新src立ち上がり＋旧src-BD回生）', cls:'active-bd',
+          getDesc: st => `旧src(${st.mon}相)コイル残留電流 → ${st.mon}H_BD → Vbus → ${st.src}H(ON) → ${st.src}コイル → 中性点 → ${st.dst}コイル → ${st.dst}L(ON) → GND` },
 };
+
+// ─ 動的 BEMF物理説明（全相） ─
+function phBemfState(ph, si) {
+  const st = STEPS[si];
+  const elD = elDeg();
+  const bv   = bemf(ph, elD);
+  const bvFmt = bv.toFixed(2);
+  const col  = PC[ph];
+  const plusAng  = COIL_PLUS[ph];
+  const minusAng = COIL_MINUS[ph];
+  const mechNow  = mechDeg(); // current rotor N angle
+
+  // ZC that MONITORS this step (only for mon phase)
+  const isMon = ph === st.mon;
+  const zcEl  = st.el[0] + 30;
+  const zcMech = (zcEl + 30) % 360;
+  const bvBefore = bemf(ph, zcEl - 0.5);
+  const isRising = bvBefore < 0;
+
+  // Current BEMF regime
+  const t = bv;
+  let regime;
+  if (Math.abs(t) < 0.05)     regime = '<b>≈0 (ZC付近)</b>';
+  else if (t > 0.95)          regime = '<b style="color:#fbbf24">+1 プラトー</b>';
+  else if (t < -0.95)         regime = '<b style="color:#a78bfa">−1 プラトー</b>';
+  else if (t > 0 && t < 0.95) regime = '+方向 斜面';
+  else                         regime = '−方向 斜面';
+
+  // +1 plateau mech center: plusAng + 90
+  const posMech = (plusAng + 90) % 360;
+  const negMech = (plusAng - 90 + 360) % 360;
+
+  let zcNote = '';
+  if (isMon) {
+    const zcSlot = zcMech === plusAng ? `${ph}+スロット(${plusAng}°)` : `${ph}−スロット(${minusAng}°)`;
+    const zcPhi  = zcMech === plusAng ? 'Φ最大' : 'Φ最小';
+    zcNote = `<span style="color:${col};font-size:9px">
+      ★ 監視中: el=${zcEl}°でZC → mech=${zcMech}°（N極が${zcSlot}正対、${zcPhi}→BEMF=0 ${isRising?'↑':'↓'}）
+    </span><br>`;
+  }
+
+  return `
+<div style="border-left:2px solid ${col}55;padding:4px 8px;margin-bottom:5px;background:${col}08">
+  <span style="color:${col};font-weight:700;font-size:10px">${ph}相</span>
+  <span style="font-size:9px;color:var(--text3);margin-left:4px">${ph === st.src ? 'src (HS-PWM)' : ph === st.dst ? 'dst (LS-ON)' : '監視(Hi-Z)'}</span>
+  <span style="font-size:10px;font-family:JetBrains Mono,monospace;color:${col};margin-left:6px">BEMF=${bvFmt}</span>
+  <span style="font-size:9px;color:var(--text2);margin-left:4px">${regime}</span><br>
+  ${zcNote}
+  <span style="font-size:9px;color:var(--text3)">
+    +1プラトー: N極がmech=${posMech}°（${ph}+から90°CW）
+    | −1プラトー: N極がmech=${negMech}°（${ph}+から90°CCW）
+    | BEMF=0: N極が${ph}±スロット正対時
+  </span>
+</div>`;}
+
+function makeBemfPhysicsHTML(si) {
+  return `
+<div class="zc-box" style="padding:6px 10px">
+  <div class="zc-title">📐 BEMFとロータ位置関係</div>
+  ${phBemfState('U', si)}
+  ${phBemfState('V', si)}
+  ${phBemfState('W', si)}
+</div>`;
+}
 
 function updateExplPanel() {
   const st = STEPS[si];
@@ -1366,7 +1594,7 @@ function updateExplPanel() {
   const elD = elDeg();
   const pi = PWM_INFO[pwm];
 
-  const phaseHTML = ['W','V','U'].map(ph => {
+  const phaseHTML = ['U','V','W'].map(ph => {
     const bv = bemf(ph, elD).toFixed(2);
     const col = PC[ph];
     const isMon = ph === st.mon, isSrc = ph === st.src, isDst = ph === st.dst;
@@ -1395,14 +1623,16 @@ function updateExplPanel() {
 </div>
 <div class="phase-cards">${phaseHTML}</div>
 <div class="zc-box">
-  <div class="zc-title">⚡ ZCタイミングと転流ロジック</div>
+  <div class="zc-title">⚡ S${si+1}への切り替えタイミングの取得</div>
   <div class="zc-text">
-    <span style="color:${PC[st.mon]}">${st.mon}相BEMF</span>のゼロクロスを
-    <strong>電気角${(st.el[0]-30+360)%360}°で検出</strong>済み → 30°待機 →
-    <strong>電気角${st.el[0]}°でS${si+1}開始</strong>（転流点）<br>
-    S${si+1}内の電気角${st.el[0]+30}°で次のZCを検出 → 30°後の${st.el[1]}°でS${nextSi+1}へ転流
+    前ステップ(S${((si-1+6)%6)+1})の<span style="color:${PC[st.mon]}">${st.mon}相BEMF</span>ゼロクロスを
+    <strong>電気角${(st.el[0]-30+360)%360}°（機械角${(st.el[0]-30+30+360)%360}°）で検出</strong> → 30°待機 →
+    <strong>電気角${st.el[0]}°でS${si+1}に転流</strong>（${st.src}→${st.dst}切り替え）<br>
+    ├ 転流直前: ${STEPS[(si-1+6)%6].src}H=PWM, ${st.dst}L=ON → 転流後: ${st.src}H=PWM, ${st.dst}L=ON<br>
+    └ S${si+1}内の電気角${st.el[0]+30}°（機械角${(st.el[0]+30+30)%360}°）で次ZC検出 → 30°後の電気角${st.el[1]}°でS${nextSi+1}へ転流
   </div>
-</div>`;
+</div>
+${makeBemfPhysicsHTML(si)}`;
 }
 
 /* ============================================================
@@ -1439,7 +1669,7 @@ STEPS.forEach((st, i) => {
 // Frac slider
 document.getElementById('frac-slider').oninput = function() {
   frac = +this.value;
-  elAcc = si * 60 + frac;  // 手動操作: 0-359°, mechDeg = 0-180°
+  elAcc = si * 60 + frac;  // 手動操作: 0-359°, mechDeg = 0-360°
   updateLabels();
   redrawAll();
 };
@@ -1461,6 +1691,58 @@ document.getElementById('duty-slider').oninput = function() {
   duty = +this.value;
   document.getElementById('duty-label').textContent = duty + '%';
   redrawAll();
+};
+
+// RC mode toggle
+document.getElementById('rc-mode-btn').onclick = function() {
+  rcMode = !rcMode;
+  this.textContent = rcMode ? 'RC-PWM (1000–2000µs)' : '直接デューティ';
+  this.classList.toggle('active', rcMode);
+  document.getElementById('duty-row').style.display = rcMode ? 'none' : '';
+  document.getElementById('rc-row').style.display  = rcMode ? ''     : 'none';
+  redrawAll();
+};
+
+function rcUpdateDutyLabel() {
+  document.getElementById('rc-duty-label').textContent = getDuty() + '%';
+}
+function rcSyncSlider() {
+  const sl = document.getElementById('rc-pulse-slider');
+  sl.min = rcPulseMin; sl.max = rcPulseMax;
+  sl.value = rcPulse;
+}
+
+// RC min/max inputs
+document.getElementById('rc-min-input').oninput = function() {
+  rcPulseMin = Math.max(0, +this.value || 0);
+  rcPulse = Math.max(rcPulseMin, Math.min(rcPulseMax, rcPulse));
+  rcSyncSlider();
+  document.getElementById('rc-pulse-num').value = rcPulse;
+  rcUpdateDutyLabel(); redrawAll();
+};
+document.getElementById('rc-max-input').oninput = function() {
+  rcPulseMax = Math.max(rcPulseMin + 1, +this.value || 0);
+  rcPulse = Math.max(rcPulseMin, Math.min(rcPulseMax, rcPulse));
+  rcSyncSlider();
+  document.getElementById('rc-pulse-num').value = rcPulse;
+  rcUpdateDutyLabel(); redrawAll();
+};
+document.getElementById('rc-frame-input').oninput = function() {
+  rcFrame = Math.max(1, +this.value || 1);
+  rcUpdateDutyLabel(); redrawAll();
+};
+
+// RC pulse slider
+document.getElementById('rc-pulse-slider').oninput = function() {
+  rcPulse = +this.value;
+  document.getElementById('rc-pulse-num').value = rcPulse;
+  rcUpdateDutyLabel(); redrawAll();
+};
+// RC pulse number input
+document.getElementById('rc-pulse-num').oninput = function() {
+  rcPulse = Math.max(rcPulseMin, Math.min(rcPulseMax, +this.value || rcPulseMin));
+  rcSyncSlider();
+  rcUpdateDutyLabel(); redrawAll();
 };
 
 // Play button
@@ -1485,7 +1767,7 @@ function startAnimation() {
     if (lastTs === null) lastTs = ts;
     const dt = (ts - lastTs) / 1000;
     lastTs = ts;
-    elAcc = (elAcc + SPEED * dt) % 720;
+    elAcc = (elAcc + SPEED * dt) % 360;
     const newSi = Math.floor(elAcc / 60) % 6;
     const newFrac = Math.round(elAcc % 60);
     if (newSi !== si) {
